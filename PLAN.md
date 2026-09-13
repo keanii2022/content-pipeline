@@ -57,7 +57,7 @@ before each is committed.
 
 ## 3. Pipeline state-boundary scaffolding
 
-- **Status:** current
+- **Status:** done
 - **Scope:** create `raw/`, `work/`, `staged/` directories (each with
   `.gitkeep`; binary contents ignored via `.gitignore`, already in place).
   *(Actual: `work/.gitkeep` and `staged/.gitkeep` are tracked; `raw/` has no
@@ -76,7 +76,7 @@ before each is committed.
 
 ## 4. Single-clip fetch tool
 
-- **Status:** not-started
+- **Status:** current
 - **Scope:** `pipeline/fetch/__init__.py`, `pipeline/fetch/fetch_clip.py`
   (wraps yt-dlp; takes a candidate you selected from Step 2's output; before
   downloading, re-validates it via
