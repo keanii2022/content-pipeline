@@ -9,7 +9,8 @@ stay manual. So `run_single.py` doesn't run the whole chain in one call —
 it exposes one subcommand per stage, each printing what to do next, and
 the human (or Claude, driving it interactively) runs them in order:
 
-    discover -> record-candidates -> select-candidate -> fetch & voiceover -> assemble
+    discover -> record-candidates -> select-candidate -> fetch & voiceover ->
+    assemble -> check-format
 
 Neither checkpoint is a formality here: `select-candidate` only creates
 the script job and prints the script-writer prompt, and `voiceover`
@@ -33,6 +34,8 @@ from pipeline.discover.find_candidates import (
     find_candidates,
 )
 from pipeline.fetch.fetch_clip import FetchError, fetch_clip
+from pipeline.format.profiles import PROFILES
+from pipeline.format.validate import FormatError, validate_format
 from pipeline.script.draft import DraftError, start_script_job
 from pipeline.voiceover.generate import VoiceoverError, generate_voiceover
 
@@ -114,6 +117,23 @@ def _cmd_assemble(args: argparse.Namespace) -> None:
     print(f"Assembled output at {out_dir / 'output.mp4'}")
     print(f"Manifest written to {out_dir / 'manifest.json'}")
     print(
+        "\nOnce ready, check it against a platform's format profile:\n"
+        f"  check-format {args.job_id} <profile>\n"
+        f"  (profiles: {', '.join(sorted(PROFILES))})"
+    )
+
+
+def _cmd_check_format(args: argparse.Namespace) -> None:
+    result = validate_format(args.job_id, args.profile, ffprobe_path=args.ffprobe_path)
+    status = "PASSED" if result["passed"] else "FAILED"
+    print(
+        f"Format compliance for job '{args.job_id}' against profile "
+        f"'{args.profile}': {status}"
+    )
+    for reason in result["reasons"]:
+        print(f"  - {reason}")
+    print(f"\nResult recorded in staged/{args.job_id}/manifest.json")
+    print(
         "\nThis pipeline stops here. Review the staged output yourself — "
         "nothing in this repo publishes or uploads it anywhere; posting it "
         "is a manual, external action."
@@ -173,6 +193,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_assemble.add_argument("--ffmpeg-path", default="ffmpeg")
     p_assemble.set_defaults(func=_cmd_assemble)
 
+    p_check_format = subparsers.add_parser(
+        "check-format", help="Validate staged output against a platform format profile."
+    )
+    p_check_format.add_argument("job_id")
+    p_check_format.add_argument("profile", choices=sorted(PROFILES))
+    p_check_format.add_argument("--ffprobe-path", default="ffprobe")
+    p_check_format.set_defaults(func=_cmd_check_format)
+
     return parser
 
 
@@ -181,7 +209,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         args.func(args)
-    except (DiscoveryError, DraftError, FetchError, VoiceoverError, AssembleError) as exc:
+    except (
+        DiscoveryError,
+        DraftError,
+        FetchError,
+        VoiceoverError,
+        AssembleError,
+        FormatError,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0
