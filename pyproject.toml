@@ -5,6 +5,7 @@ description = "Content-automation pipeline: source permitted clips, add commenta
 requires-python = ">=3.9"
 dependencies = [
     "PyYAML>=6.0",
+    "yt-dlp>=2024.1.0",
 ]
 
 [build-system]
