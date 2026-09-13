@@ -59,8 +59,11 @@ before each is committed.
 
 - **Status:** current
 - **Scope:** create `raw/`, `work/`, `staged/` directories (each with
-  `.gitkeep`; binary contents ignored via `.gitignore`, already in place),
-  add `docs/pipeline-stages.md` documenting the stage boundary rule:
+  `.gitkeep`; binary contents ignored via `.gitignore`, already in place).
+  *(Actual: `work/.gitkeep` and `staged/.gitkeep` are tracked; `raw/` has no
+  tracked `.gitkeep` because `.gitignore`'s `/raw/` rule ignores the whole
+  directory, not just media files in it — see docs/pipeline-stages.md.)*
+  Add `docs/pipeline-stages.md` documenting the stage boundary rule:
   *nothing in this repo reads from `staged/` in order to post anywhere;
   moving content out of `staged/` to an actual platform is always a manual,
   external human action.* This step has no application code to speak of, but
