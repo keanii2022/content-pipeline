@@ -143,7 +143,7 @@ before each is committed.
 
 ## 8. End-to-end vertical slice orchestration
 
-- **Status:** current
+- **Status:** done
 - **Scope:** `pipeline/orchestrate/__init__.py`,
   `pipeline/orchestrate/run_single.py` — a CLI entrypoint that runs
   discovery → (you pick a candidate) → script draft → (you approve/edit
@@ -158,7 +158,7 @@ before each is committed.
 
 ## 9. Platform format-compliance profile & validator
 
-- **Status:** not-started
+- **Status:** current
 - **Scope:** `pipeline/format/profiles.py` (or `.yaml`) defining specs for
   TikTok/Reels/Shorts (aspect ratio, max duration, codec/bitrate) as named,
   config-driven profiles; `pipeline/format/validate.py` checks a staged
