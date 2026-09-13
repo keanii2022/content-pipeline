@@ -173,7 +173,7 @@ before each is committed.
 
 ## 10. Local review dashboard (Node)
 
-- **Status:** current
+- **Status:** done
 - **Scope:** new `review-app/` directory (Node project — `package.json`,
   a small server + frontend) that reads `staged/*/manifest.json`, lets you
   browse jobs, preview the video, see the format-compliance result, and
@@ -188,7 +188,7 @@ before each is committed.
 
 ## 11. Batch/queue generalization
 
-- **Status:** not-started
+- **Status:** current
 - **Scope:** `pipeline/orchestrate/run_batch.py` — iterates the permissions
   allowlist (or a new `data/jobs/queue.yaml`) and runs the discovery →
   script-draft → fetch → voiceover → assemble → format-validate chain per
