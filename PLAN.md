@@ -202,7 +202,7 @@ before each is committed.
 
 ## 12. Review dashboard: batch run visibility
 
-- **Status:** current
+- **Status:** done
 - **Scope:** extend `review-app/` (Node) to also surface Step 11's batch
   runs: a new `GET /api/runs` (list every `data/jobs/<run_id>/state.json`)
   and `GET /api/runs/:run_id` (one run's detail) in `review-app/server.js`,
