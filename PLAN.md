@@ -127,7 +127,7 @@ before each is committed.
 
 ## 7. Single-clip assembly
 
-- **Status:** current
+- **Status:** done
 - **Scope:** `pipeline/assemble/__init__.py`, `pipeline/assemble/assemble.py`
   (ffmpeg invocation combining one raw clip + one voiceover audio track into
   one 9:16 output at `staged/<job_id>/output.mp4`, plus a
@@ -143,7 +143,7 @@ before each is committed.
 
 ## 8. End-to-end vertical slice orchestration
 
-- **Status:** not-started
+- **Status:** current
 - **Scope:** `pipeline/orchestrate/__init__.py`,
   `pipeline/orchestrate/run_single.py` — a CLI entrypoint that runs
   discovery → (you pick a candidate) → script draft → (you approve/edit
