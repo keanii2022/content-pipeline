@@ -93,7 +93,7 @@ before each is committed.
 
 ## 5. Commentary script drafting
 
-- **Status:** current
+- **Status:** done
 - **Scope:** `pipeline/script/__init__.py`, `pipeline/script/draft.py` —
   invokes the dedicated `script-writer` agent
   (`~/.claude/agents/script-writer.md`) with a selected candidate's metadata
@@ -112,7 +112,7 @@ before each is committed.
 
 ## 6. AI voiceover generation
 
-- **Status:** not-started
+- **Status:** current
 - **Scope:** `pipeline/voiceover/__init__.py`, `pipeline/voiceover/generate.py`
   (takes your human-approved `work/<job_id>/script.md` from Step 5 as input
   text, calls a configured TTS provider, writes the resulting audio to
