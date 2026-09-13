@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Creator Permission Allowlist",
+  "description": "Ledger of creators who have explicitly granted permission to clip/reuse their content. This file documents the contract; it is enforced in code by pipeline/permissions/validate.py.",
+  "type": "object",
+  "required": ["creators"],
+  "properties": {
+    "creators": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/creatorEntry" }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "creatorEntry": {
+      "type": "object",
+      "required": [
+        "creator_id",
+        "display_name",
+        "platform",
+        "source_url",
+        "permission_scope",
+        "permission_granted_date",
+        "evidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "creator_id": {
+          "type": "string",
+          "description": "Unique, stable slug used to reference this creator elsewhere in the pipeline."
+        },
+        "display_name": {
+          "type": "string",
+          "description": "Human-readable name for the creator."
+        },
+        "platform": {
+          "type": "string",
+          "enum": ["youtube", "tiktok", "instagram", "twitch", "other"]
+        },
+        "source_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Canonical URL of the creator's channel/profile that clips will be sourced from."
+        },
+        "permission_scope": {
+          "type": "string",
+          "description": "What was actually permitted, e.g. 'clipping and reuse with commentary, non-monetized'."
+        },
+        "permission_granted_date": {
+          "type": "string",
+          "format": "date",
+          "description": "ISO 8601 date (YYYY-MM-DD) the permission was granted."
+        },
+        "evidence": {
+          "type": "string",
+          "description": "Reference to where the permission grant is documented (email thread, message link, contract doc, etc.)."
+        },
+        "expiry_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Optional ISO 8601 date after which this permission is no longer valid."
+        },
+        "conditions": {
+          "type": "string",
+          "description": "Optional restrictions or conditions attached to the permission."
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

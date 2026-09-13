@@ -1,0 +1,15 @@
+[project]
+name = "content-pipeline"
+version = "0.1.0"
+description = "Content-automation pipeline: source permitted clips, add commentary, assemble short-form video. Publishing is manual."
+requires-python = ">=3.9"
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pipeline*"]
