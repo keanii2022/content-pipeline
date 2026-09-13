@@ -34,6 +34,30 @@ body {
   overflow-y: auto;
 }
 
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.tabs .tab {
+  flex: 1;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tabs .tab.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--panel);
+}
+
 .sidebar h1 {
   font-size: 15px;
   text-transform: uppercase;
@@ -185,4 +209,17 @@ button:hover {
   margin-top: 10px;
   font-size: 13px;
   color: var(--muted);
+}
+
+.run-entries {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.run-entries li {
+  margin-bottom: 8px;
+}
+
+.run-entries li:last-child {
+  margin-bottom: 0;
 }

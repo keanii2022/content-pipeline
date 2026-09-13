@@ -7,6 +7,11 @@
 // data/candidates/, or the permissions ledger, and it never calls any
 // posting/publishing API — marking a job "approved" here is a note for a
 // human, not a trigger for anything automated.
+//
+// Step 12 adds read-only visibility into Step 11's batch runs: GET /api/runs
+// and GET /api/runs/:run_id read data/jobs/<run_id>/state.json. This app
+// never writes to data/jobs/ — state.json stays owned and mutated only by
+// run_batch.py — and no endpoint here triggers any pipeline stage.
 
 import http from "node:http";
 import fs from "node:fs/promises";
@@ -17,6 +22,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..");
 const STAGED_DIR = path.join(REPO_ROOT, "staged");
+const JOBS_DIR = path.join(REPO_ROOT, "data", "jobs");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4173;
 
@@ -101,6 +107,39 @@ function resolveOutputFile(jobId, manifest) {
   return resolved;
 }
 
+async function readRunState(runId) {
+  const statePath = path.join(JOBS_DIR, runId, "state.json");
+  const raw = await fs.readFile(statePath, "utf8");
+  return JSON.parse(raw);
+}
+
+async function listRuns() {
+  let entries;
+  try {
+    entries = await fs.readdir(JOBS_DIR, { withFileTypes: true });
+  } catch (err) {
+    if (err.code === "ENOENT") return [];
+    throw err;
+  }
+
+  const runs = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !isSafePathComponent(entry.name)) continue;
+    try {
+      runs.push(await readRunState(entry.name));
+    } catch (err) {
+      if (err.code === "ENOENT") continue;
+      // A corrupt/unreadable state.json shouldn't break the whole listing —
+      // skip it and keep browsing the rest.
+      continue;
+    }
+  }
+  // run_id is a timestamp prefix (see _generate_run_id in run_batch.py), so
+  // sorting it descending surfaces the most recently started run first.
+  runs.sort((a, b) => String(b.run_id).localeCompare(String(a.run_id)));
+  return runs;
+}
+
 async function serveStaticFile(req, res, pathname) {
   const relative = pathname === "/" ? "index.html" : pathname.slice(1);
   const resolved = path.resolve(PUBLIC_DIR, relative);
@@ -136,6 +175,24 @@ async function handleGetJob(req, res, jobId) {
     sendJson(res, 200, { manifest });
   } catch (err) {
     sendJson(res, 404, { error: "job not found" });
+  }
+}
+
+async function handleListRuns(req, res) {
+  const runs = await listRuns();
+  sendJson(res, 200, { runs });
+}
+
+async function handleGetRun(req, res, runId) {
+  if (!isSafePathComponent(runId)) {
+    sendJson(res, 400, { error: "invalid run id" });
+    return;
+  }
+  try {
+    const state = await readRunState(runId);
+    sendJson(res, 200, { state });
+  } catch (err) {
+    sendJson(res, 404, { error: "run not found" });
   }
 }
 
@@ -234,6 +291,17 @@ const server = http.createServer(async (req, res) => {
     const reviewMatch = pathname.match(/^\/api\/jobs\/([^/]+)\/review$/);
     if (req.method === "POST" && reviewMatch) {
       await handleReview(req, res, decodeURIComponent(reviewMatch[1]));
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/runs") {
+      await handleListRuns(req, res);
+      return;
+    }
+
+    const runMatch = pathname.match(/^\/api\/runs\/([^/]+)$/);
+    if (req.method === "GET" && runMatch) {
+      await handleGetRun(req, res, decodeURIComponent(runMatch[1]));
       return;
     }
 

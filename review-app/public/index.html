@@ -8,8 +8,13 @@
 <body>
   <div class="layout">
     <aside class="sidebar">
-      <h1>Staged jobs</h1>
+      <div class="tabs">
+        <button id="tab-jobs" class="tab active" type="button">Staged Jobs</button>
+        <button id="tab-runs" class="tab" type="button">Batch Runs</button>
+      </div>
+      <h1 id="sidebar-title">Staged jobs</h1>
       <ul id="job-list" class="job-list"></ul>
+      <ul id="run-list" class="job-list" hidden></ul>
     </aside>
     <main class="detail" id="detail">
       <p class="empty">Select a job from the list to review it.</p>
