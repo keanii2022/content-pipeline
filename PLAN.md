@@ -188,7 +188,7 @@ before each is committed.
 
 ## 11. Batch/queue generalization
 
-- **Status:** current
+- **Status:** done
 - **Scope:** `pipeline/orchestrate/run_batch.py` — iterates the permissions
   allowlist (or a new `data/jobs/queue.yaml`) and runs the discovery →
   script-draft → fetch → voiceover → assemble → format-validate chain per
