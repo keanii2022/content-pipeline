@@ -112,7 +112,7 @@ before each is committed.
 
 ## 6. AI voiceover generation
 
-- **Status:** current
+- **Status:** done
 - **Scope:** `pipeline/voiceover/__init__.py`, `pipeline/voiceover/generate.py`
   (takes your human-approved `work/<job_id>/script.md` from Step 5 as input
   text, calls a configured TTS provider, writes the resulting audio to
@@ -127,7 +127,7 @@ before each is committed.
 
 ## 7. Single-clip assembly
 
-- **Status:** not-started
+- **Status:** current
 - **Scope:** `pipeline/assemble/__init__.py`, `pipeline/assemble/assemble.py`
   (ffmpeg invocation combining one raw clip + one voiceover audio track into
   one 9:16 output at `staged/<job_id>/output.mp4`, plus a
