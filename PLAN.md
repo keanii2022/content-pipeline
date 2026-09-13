@@ -7,7 +7,7 @@ publishing is always a manual, human action outside this pipeline.
 
 Language split: Python for all media-processing/pipeline logic (fetch, TTS,
 ffmpeg assembly, format validation, orchestration); Node for the review
-dashboard only (Step 10).
+dashboard only (Steps 10, 12).
 
 Agent use: candidate clip discovery (Step 2) uses the `researcher` agent to
 surface options for you to pick from; commentary script drafting (Step 5)
@@ -199,3 +199,29 @@ before each is committed.
   single-job path already proven).
 - **Out of scope:** no changes to the review dashboard, no changes to the
   manual-approval boundary, no new voice sources or platforms.
+
+## 12. Review dashboard: batch run visibility
+
+- **Status:** current
+- **Scope:** extend `review-app/` (Node) to also surface Step 11's batch
+  runs: a new `GET /api/runs` (list every `data/jobs/<run_id>/state.json`)
+  and `GET /api/runs/:run_id` (one run's detail) in `review-app/server.js`,
+  plus a "Batch Runs" view in `review-app/public/` listing each run's
+  creators with the same derived stage/next-action a human would get from
+  `run_batch.py status <run_id>` (recomputed in JS from the same state
+  fields — `batch_id`/`job_id`/`clip_id`/`voiceover_generated`/`assembled`/
+  `format_profile`/`format_passed` — not read from a separately stored
+  status string, so it can't drift from `_describe_entry`'s logic the way
+  two independent implementations of the same derivation could). Purely
+  read-only: this view is for seeing where a run stands, not for driving
+  it.
+- **Dependencies:** Step 10 (`review-app/` already exists — server/client
+  conventions, static-file serving, `isSafePathComponent`-style path
+  safety), Step 11 (`data/jobs/<run_id>/state.json` schema to read).
+- **Out of scope:** the dashboard must never write to `data/jobs/` —
+  `state.json` stays owned and mutated only by `run_batch.py`, the same
+  way Step 10 never writes outside `staged/`. No button or endpoint that
+  triggers any pipeline stage (discover/fetch/voiceover/assemble/etc.)
+  from the dashboard — advancing a run stays a CLI action. No changes to
+  Step 10's existing staged-job review flow. Still never calls any
+  posting/publishing API.
