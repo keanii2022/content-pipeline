@@ -158,7 +158,7 @@ before each is committed.
 
 ## 9. Platform format-compliance profile & validator
 
-- **Status:** current
+- **Status:** done
 - **Scope:** `pipeline/format/profiles.py` (or `.yaml`) defining specs for
   TikTok/Reels/Shorts (aspect ratio, max duration, codec/bitrate) as named,
   config-driven profiles; `pipeline/format/validate.py` checks a staged
@@ -173,7 +173,7 @@ before each is committed.
 
 ## 10. Local review dashboard (Node)
 
-- **Status:** not-started
+- **Status:** current
 - **Scope:** new `review-app/` directory (Node project — `package.json`,
   a small server + frontend) that reads `staged/*/manifest.json`, lets you
   browse jobs, preview the video, see the format-compliance result, and
