@@ -41,7 +41,7 @@ before each is committed.
 
 ## 2. Candidate clip discovery
 
-- **Status:** current
+- **Status:** done
 - **Scope:** `pipeline/discover/__init__.py`, `pipeline/discover/find_candidates.py`
   — invokes the `researcher` agent, scoped to a single permitted creator
   looked up via `pipeline.permissions.validate.is_permitted`, to scan that
@@ -57,7 +57,7 @@ before each is committed.
 
 ## 3. Pipeline state-boundary scaffolding
 
-- **Status:** not-started
+- **Status:** current
 - **Scope:** create `raw/`, `work/`, `staged/` directories (each with
   `.gitkeep`; binary contents ignored via `.gitignore`, already in place),
   add `docs/pipeline-stages.md` documenting the stage boundary rule:
