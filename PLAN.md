@@ -76,7 +76,7 @@ before each is committed.
 
 ## 4. Single-clip fetch tool
 
-- **Status:** current
+- **Status:** done
 - **Scope:** `pipeline/fetch/__init__.py`, `pipeline/fetch/fetch_clip.py`
   (wraps yt-dlp; takes a candidate you selected from Step 2's output; before
   downloading, re-validates it via
@@ -93,7 +93,7 @@ before each is committed.
 
 ## 5. Commentary script drafting
 
-- **Status:** not-started
+- **Status:** current
 - **Scope:** `pipeline/script/__init__.py`, `pipeline/script/draft.py` —
   invokes the dedicated `script-writer` agent
   (`~/.claude/agents/script-writer.md`) with a selected candidate's metadata
