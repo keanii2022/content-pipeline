@@ -1,0 +1,14 @@
+{
+  "name": "content-pipeline-review-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local dashboard for browsing staged jobs and recording human review/approval notes. Read-only over staged/ manifests plus one annotate action — never posts or publishes anywhere.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
