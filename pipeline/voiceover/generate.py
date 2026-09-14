@@ -17,7 +17,12 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from pipeline.script.draft import _SAFE_PATH_COMPONENT, load_script
+from pipeline.script.draft import (
+    _SAFE_PATH_COMPONENT,
+    extract_spoken_text,
+    load_script,
+    record_used_fact,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORK_DIR = REPO_ROOT / "work"
@@ -112,10 +117,18 @@ def generate_voiceover(job_id: str) -> Path:
         raise VoiceoverError(f"voiceover already exists at {output_path}")
 
     script_text = load_script(job_id)
+    spoken_text = extract_spoken_text(script_text)
 
-    audio_bytes = synthesize_speech(script_text)
+    audio_bytes = synthesize_speech(spoken_text)
     if not audio_bytes:
         raise VoiceoverError(f"TTS provider returned empty audio for job '{job_id}'")
 
     output_path.write_bytes(audio_bytes)
+
+    # Voiceover generation is the point Step 5's draft is treated as final
+    # (see load_script's docstring), so this is where the fact/hook it's
+    # built around gets recorded to avoid a future script repeating it.
+    hook = spoken_text.split("\n\n", 1)[0].strip()
+    record_used_fact(job_id, hook)
+
     return output_path

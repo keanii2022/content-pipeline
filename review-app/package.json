@@ -2,7 +2,7 @@
   "name": "content-pipeline-review-app",
   "version": "1.0.0",
   "private": true,
-  "description": "Local dashboard for browsing staged jobs and recording human review/approval notes. Read-only over staged/ manifests plus one annotate action — never posts or publishes anywhere.",
+  "description": "Local control panel for the content-pipeline: browse staged jobs and batch runs (read-only), plus a candidate picker, creators list, and buttons for the deterministic fetch/voiceover/assemble/format-check stages. Never posts or publishes anywhere.",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -10,5 +10,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
   }
 }

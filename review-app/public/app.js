@@ -1,19 +1,30 @@
-// Frontend for the local review dashboard. Talks only to this app's own
-// /api/jobs and /media endpoints, which read/annotate staged/ manifests —
-// nothing here calls out to any platform or posting API.
+// Frontend for the local review dashboard / control panel. Talks only to
+// this app's own /api/* and /media endpoints — nothing here calls out to
+// any platform or posting API. The control panel (Step 13) can trigger
+// fetch/voiceover/assemble/check-format and candidate-selection's job
+// creation; it never runs discovery or script drafting, which still need
+// a live Claude Code session.
 
 const jobListEl = document.getElementById("job-list");
 const runListEl = document.getElementById("run-list");
+const controlListEl = document.getElementById("control-list");
+const creatorsListEl = document.getElementById("creators-list");
+const batchesListEl = document.getElementById("batches-list");
 const detailEl = document.getElementById("detail");
 const sidebarTitleEl = document.getElementById("sidebar-title");
 const tabJobsEl = document.getElementById("tab-jobs");
 const tabRunsEl = document.getElementById("tab-runs");
+const tabControlEl = document.getElementById("tab-control");
 
 let jobs = [];
 let activeJobId = null;
 let runs = [];
 let activeRunId = null;
 let activeTab = "jobs";
+let creators = [];
+let batches = [];
+let activeBatchKey = null; // `${creator_id}::${batch_id}`
+let currentJob = loadCurrentJob(); // { creator_id, batch_id, candidate_index, job_id, clip_id }
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
@@ -75,15 +86,31 @@ function switchTab(tab) {
   activeTab = tab;
   tabJobsEl.classList.toggle("active", tab === "jobs");
   tabRunsEl.classList.toggle("active", tab === "runs");
+  tabControlEl.classList.toggle("active", tab === "control");
   jobListEl.hidden = tab !== "jobs";
   runListEl.hidden = tab !== "runs";
-  sidebarTitleEl.textContent = tab === "jobs" ? "Staged jobs" : "Batch runs";
+  controlListEl.hidden = tab !== "control";
+  sidebarTitleEl.textContent =
+    tab === "jobs" ? "Staged jobs" : tab === "runs" ? "Batch runs" : "Control panel";
 
   if (tab === "jobs") {
     if (activeJobId) {
       selectJob(activeJobId);
     } else {
       detailEl.innerHTML = `<p class="empty">Select a job from the list to review it.</p>`;
+    }
+    return;
+  }
+
+  if (tab === "control") {
+    if (creators.length === 0 && batches.length === 0) {
+      loadControlPanel().catch((err) => {
+        detailEl.innerHTML = `<p class="empty">Failed to load control panel: ${escapeHtml(err.message)}</p>`;
+      });
+    } else {
+      renderCreatorsList();
+      renderBatchesList();
+      renderControlDetail();
     }
     return;
   }
@@ -265,8 +292,280 @@ async function submitReview(jobId, approved) {
   renderDetail(data.manifest);
 }
 
+// --- Control panel (Step 13) ---
+// Talks to /api/creators, /api/candidates, and /api/actions/:action.
+// The action endpoints wrap fetch/voiceover/assemble/check-format and
+// select-candidate's job-creation step — deterministic pipeline code with
+// no Claude Code agent involved. Discovery and script drafting are NOT
+// here: those still happen in chat, per PLAN.md Step 13's scope.
+
+const CURRENT_JOB_KEY = "content-pipeline-current-job";
+
+function loadCurrentJob() {
+  try {
+    const raw = localStorage.getItem(CURRENT_JOB_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveCurrentJob(job) {
+  currentJob = job;
+  try {
+    if (job) {
+      localStorage.setItem(CURRENT_JOB_KEY, JSON.stringify(job));
+    } else {
+      localStorage.removeItem(CURRENT_JOB_KEY);
+    }
+  } catch (err) {
+    // Best-effort convenience persistence only — ignore storage failures
+    // (private browsing, quota, etc.) and keep going with in-memory state.
+  }
+}
+
+async function loadControlPanel() {
+  const [creatorsData, batchesData] = await Promise.all([
+    fetchJson("/api/creators"),
+    fetchJson("/api/candidates"),
+  ]);
+  creators = creatorsData.creators;
+  batches = batchesData.batches;
+  renderCreatorsList();
+  renderBatchesList();
+  renderControlDetail();
+}
+
+function renderCreatorsList() {
+  creatorsListEl.innerHTML = "";
+  if (creators.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "No permitted creators yet.";
+    li.style.cursor = "default";
+    creatorsListEl.appendChild(li);
+    return;
+  }
+  for (const creator of creators) {
+    const li = document.createElement("li");
+    li.style.cursor = "default";
+    li.innerHTML = `
+      <span class="job-id">${escapeHtml(creator.display_name)}</span>
+      <span class="job-status">${escapeHtml(creator.platform)} · ${escapeHtml(creator.creator_id)}</span>
+    `;
+    creatorsListEl.appendChild(li);
+  }
+}
+
+function renderBatchesList() {
+  batchesListEl.innerHTML = "";
+  if (batches.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "No candidate batches recorded yet.";
+    li.style.cursor = "default";
+    batchesListEl.appendChild(li);
+    return;
+  }
+  for (const batch of batches) {
+    const key = `${batch.creator_id}::${batch.batch_id}`;
+    const li = document.createElement("li");
+    li.className = key === activeBatchKey ? "active" : "";
+    li.innerHTML = `
+      <span class="job-id">${escapeHtml(batch.creator_id)}</span>
+      <span class="job-status">${escapeHtml(batch.batch_id)} · ${batch.candidates.length} candidate(s)</span>
+    `;
+    li.addEventListener("click", () => {
+      activeBatchKey = key;
+      renderBatchesList();
+      renderControlDetail();
+    });
+    batchesListEl.appendChild(li);
+  }
+}
+
+async function runAction(action, args) {
+  const res = await fetch(`/api/actions/${encodeURIComponent(action)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(args),
+  });
+  const body = await res.json();
+  if (!res.ok) {
+    throw new Error(body.error || `action '${action}' failed (${res.status})`);
+  }
+  return body.result;
+}
+
+function renderCurrentJobPanel(status) {
+  if (!currentJob) {
+    return `<div class="section"><h3>Current job</h3><p class="empty">Pick a candidate below to start one.</p></div>`;
+  }
+  const statusHtml = status
+    ? `<p class="review-note ${status.error ? "action-error" : "action-ok"}">${escapeHtml(status.text)}</p>`
+    : "";
+  const canFetch = Boolean(currentJob.job_id);
+  const canVoiceover = Boolean(currentJob.job_id);
+  const canAssemble = Boolean(currentJob.job_id && currentJob.clip_id);
+  return `
+    <div class="section">
+      <h3>Current job</h3>
+      <pre>${escapeHtml(JSON.stringify(currentJob, null, 2))}</pre>
+      <div class="actions">
+        <button id="ca-fetch" ${canFetch ? "" : "disabled"}>Fetch clip</button>
+        <button id="ca-voiceover" ${canVoiceover ? "" : "disabled"}>Generate voiceover</button>
+        <button id="ca-assemble" ${canAssemble ? "" : "disabled"}>Assemble</button>
+      </div>
+      <div class="actions">
+        <select id="ca-profile">
+          <option value="tiktok">tiktok</option>
+          <option value="reels">reels</option>
+          <option value="shorts">shorts</option>
+        </select>
+        <button id="ca-checkformat" ${canAssemble ? "" : "disabled"}>Check format</button>
+        <button id="ca-clear" class="reject">Clear current job</button>
+      </div>
+      ${statusHtml}
+    </div>
+  `;
+}
+
+function renderBatchBrowser() {
+  if (!activeBatchKey) {
+    return `<p class="empty">Select a candidate batch from the sidebar to browse and pick a clip.</p>`;
+  }
+  const batch = batches.find((b) => `${b.creator_id}::${b.batch_id}` === activeBatchKey);
+  if (!batch) return `<p class="empty">Batch not found.</p>`;
+
+  const items = batch.candidates
+    .map((candidate, index) => {
+      const isCurrent =
+        currentJob &&
+        currentJob.creator_id === batch.creator_id &&
+        currentJob.batch_id === batch.batch_id &&
+        currentJob.candidate_index === index;
+      return `
+        <div class="section">
+          <h3>[${index}] ${escapeHtml(candidate.start_timestamp)}–${escapeHtml(candidate.end_timestamp)}</h3>
+          <p>${escapeHtml(candidate.url)}</p>
+          <p class="review-note">${escapeHtml(candidate.rationale)}</p>
+          <div class="actions">
+            <button class="ca-select" data-index="${index}" ${isCurrent ? "disabled" : ""}>
+              ${isCurrent ? "Selected" : "Select this candidate"}
+            </button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  return `
+    <h2>${escapeHtml(batch.creator_id)} — ${escapeHtml(batch.batch_id)}</h2>
+    ${items}
+  `;
+}
+
+function renderControlDetail(status) {
+  detailEl.innerHTML = renderCurrentJobPanel(status) + renderBatchBrowser();
+  wireControlActions();
+}
+
+function wireControlActions() {
+  for (const button of detailEl.querySelectorAll(".ca-select")) {
+    button.addEventListener("click", () => selectCandidate(Number(button.dataset.index)));
+  }
+  const fetchBtn = document.getElementById("ca-fetch");
+  if (fetchBtn) fetchBtn.addEventListener("click", doFetch);
+  const voiceoverBtn = document.getElementById("ca-voiceover");
+  if (voiceoverBtn) voiceoverBtn.addEventListener("click", doVoiceover);
+  const assembleBtn = document.getElementById("ca-assemble");
+  if (assembleBtn) assembleBtn.addEventListener("click", doAssemble);
+  const checkFormatBtn = document.getElementById("ca-checkformat");
+  if (checkFormatBtn) checkFormatBtn.addEventListener("click", doCheckFormat);
+  const clearBtn = document.getElementById("ca-clear");
+  if (clearBtn) clearBtn.addEventListener("click", () => {
+    saveCurrentJob(null);
+    renderControlDetail();
+  });
+}
+
+async function selectCandidate(candidateIndex) {
+  const batch = batches.find((b) => `${b.creator_id}::${b.batch_id}` === activeBatchKey);
+  if (!batch) return;
+  try {
+    const result = await runAction("select-candidate", {
+      creator_id: batch.creator_id,
+      batch_id: batch.batch_id,
+      candidate_index: candidateIndex,
+    });
+    saveCurrentJob({
+      creator_id: batch.creator_id,
+      batch_id: batch.batch_id,
+      candidate_index: candidateIndex,
+      job_id: result.job_id,
+      clip_id: null,
+    });
+    renderControlDetail({
+      text: `Job '${result.job_id}' created. Hand this prompt to Claude to run the script-writer agent:\n\n${result.prompt}`,
+    });
+  } catch (err) {
+    renderControlDetail({ text: err.message, error: true });
+  }
+}
+
+async function doFetch() {
+  try {
+    const result = await runAction("fetch", {
+      creator_id: currentJob.creator_id,
+      batch_id: currentJob.batch_id,
+      candidate_index: currentJob.candidate_index,
+    });
+    saveCurrentJob({ ...currentJob, clip_id: result.clip_id });
+    renderControlDetail({ text: `Fetched clip to ${result.out_dir}` });
+  } catch (err) {
+    renderControlDetail({ text: err.message, error: true });
+  }
+}
+
+async function doVoiceover() {
+  try {
+    const result = await runAction("voiceover", { job_id: currentJob.job_id });
+    renderControlDetail({ text: `Voiceover generated at ${result.voiceover_path}` });
+  } catch (err) {
+    renderControlDetail({ text: err.message, error: true });
+  }
+}
+
+async function doAssemble() {
+  try {
+    const result = await runAction("assemble", {
+      job_id: currentJob.job_id,
+      creator_id: currentJob.creator_id,
+      clip_id: currentJob.clip_id,
+    });
+    renderControlDetail({ text: `Assembled at ${result.output_path}` });
+    await loadJobs(); // the new staged job now shows up in the Staged Jobs tab
+  } catch (err) {
+    renderControlDetail({ text: err.message, error: true });
+  }
+}
+
+async function doCheckFormat() {
+  const profile = document.getElementById("ca-profile").value;
+  try {
+    const result = await runAction("check-format", { job_id: currentJob.job_id, profile });
+    renderControlDetail({
+      text: `Format check (${profile}): ${result.passed ? "PASSED" : "FAILED"}${
+        result.reasons && result.reasons.length ? " — " + result.reasons.join("; ") : ""
+      }`,
+      error: !result.passed,
+    });
+  } catch (err) {
+    renderControlDetail({ text: err.message, error: true });
+  }
+}
+
 tabJobsEl.addEventListener("click", () => switchTab("jobs"));
 tabRunsEl.addEventListener("click", () => switchTab("runs"));
+tabControlEl.addEventListener("click", () => switchTab("control"));
 
 loadJobs().catch((err) => {
   detailEl.innerHTML = `<p class="empty">Failed to load jobs: ${escapeHtml(err.message)}</p>`;

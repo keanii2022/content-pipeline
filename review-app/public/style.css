@@ -66,6 +66,18 @@ body {
   margin: 0 0 12px;
 }
 
+.sidebar-subhead {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 18px 0 8px;
+}
+
+.sidebar-subhead:first-child {
+  margin-top: 0;
+}
+
 .job-list {
   list-style: none;
   margin: 0;
@@ -205,10 +217,35 @@ button:hover {
   filter: brightness(1.15);
 }
 
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: none;
+}
+
+select {
+  font: inherit;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+
 .review-note {
   margin-top: 10px;
   font-size: 13px;
   color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.review-note.action-ok {
+  color: var(--good);
+}
+
+.review-note.action-error {
+  color: var(--bad);
 }
 
 .run-entries {

@@ -2,18 +2,14 @@
 # content. Validated against allowlist.schema.json (enforced in code by
 # pipeline/permissions/validate.py). Nothing may be fetched for a creator
 # that isn't listed here with a matching source_url.
-#
-# The entry below is a placeholder showing the required shape. Replace it
-# with real, verified entries — each backed by actual evidence of the
-# permission grant — before fetching any real clips, and remove this
-# placeholder once real entries exist.
 
 creators:
-  - creator_id: example-creator
-    display_name: "Example Creator"
+  - creator_id: nasa
+    display_name: "NASA"
     platform: youtube
-    source_url: "https://www.youtube.com/@example-creator"
-    permission_scope: "Clipping and reuse with original commentary, non-monetized reposts only"
-    permission_granted_date: "2026-01-01"
-    evidence: "PLACEHOLDER - replace with a link/reference to the actual permission grant (email, DM, contract, etc.)"
-    conditions: "Credit the original creator in the video description"
+    source_url: "https://www.youtube.com/@NASA"
+    permission_scope: "NASA content (images, audio, video, media files) is a US federal government work and generally not subject to copyright in the United States. Usable for educational, informational, and editorial purposes — including short-form commentary videos — provided NASA is credited as the source and the use does not imply NASA endorsement of any product or service. Editorial use (not promotional/advertising) does not require individual clearance."
+    permission_granted_date: "2026-09-13"
+    evidence: "https://www.nasa.gov/nasa-brand-center/images-and-media/ — verified directly 2026-09-13. Quoted: 'NASA content – images, audio, video, and media files... generally are not subject to copyright in the United States... NASA imagery can be generally used editorially within published works that are not promotional in nature.'"
+    conditions: "Must credit NASA as the source. Must NOT use the NASA Insignia/Logotype ('meatball'/'worm') and must not imply NASA endorsement of any product or service. Identifiable NASA personnel (e.g. astronauts) retain publicity/privacy rights for commercial use — avoid content that reads as commercial exploitation of a specific individual. Excludes any third-party copyrighted material NASA hosts that is marked as such (not NASA's own content)."
+    notes: "Public-domain status comes from being a US federal government work, not a discretionary grant — permission_granted_date reflects when this entry was verified against NASA's published guidelines, not a one-time grant date."

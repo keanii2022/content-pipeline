@@ -11,10 +11,17 @@
       <div class="tabs">
         <button id="tab-jobs" class="tab active" type="button">Staged Jobs</button>
         <button id="tab-runs" class="tab" type="button">Batch Runs</button>
+        <button id="tab-control" class="tab" type="button">Control Panel</button>
       </div>
       <h1 id="sidebar-title">Staged jobs</h1>
       <ul id="job-list" class="job-list"></ul>
       <ul id="run-list" class="job-list" hidden></ul>
+      <div id="control-list" hidden>
+        <h2 class="sidebar-subhead">Creators</h2>
+        <ul id="creators-list" class="job-list"></ul>
+        <h2 class="sidebar-subhead">Candidate batches</h2>
+        <ul id="batches-list" class="job-list"></ul>
+      </div>
     </aside>
     <main class="detail" id="detail">
       <p class="empty">Select a job from the list to review it.</p>

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "review-dashboard",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["review-app/server.js"],
+      "port": 4173
+    }
+  ]
+}

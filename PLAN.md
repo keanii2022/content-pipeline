@@ -225,3 +225,52 @@ before each is committed.
   from the dashboard — advancing a run stays a CLI action. No changes to
   Step 10's existing staged-job review flow. Still never calls any
   posting/publishing API.
+
+## 13. Control panel: candidate picker, creators/content lists, action buttons
+
+- **Status:** done
+- **Scope:** extend `review-app/` into a fuller control panel, so a batch
+  run's candidate-selection and deterministic stages can be driven from
+  the UI instead of the CLI, cutting toward the goal of prepping ~3
+  approved videos/week with less manual command-running. Discovery and
+  script drafting still require a live Claude Code session (they hand off
+  to the `researcher`/`script-writer`/`content-reviewer` agents, which no
+  plain web server can invoke) — those stay chat-driven exactly as today;
+  this step only takes over the parts of `run_batch.py`/`run_single.py`
+  that are already deterministic Python with no agent involved:
+  - **Candidates view**: `GET /api/candidates` (and
+    `/api/candidates/:creator_id`) lists recorded batches from
+    `data/candidates/`; clicking a candidate calls a new endpoint that
+    wraps `pipeline.script.draft.start_script_job` (creates the job dir,
+    returns the script-writer prompt for you to hand to Claude) — this
+    mirrors `select-candidate`, which needs no agent itself even though
+    the very next step does.
+  - **Creators list**: `GET /api/creators` reads and displays
+    `data/permissions/allowlist.yaml` (read-only) — requires adding a
+    YAML-parsing dependency to `review-app/` (e.g. `js-yaml`), the first
+    real npm dependency it's had; Steps 10/12 needed none.
+  - **Action buttons**, each wrapping the matching deterministic pipeline
+    function directly (not shelling out to the CLI): fetch
+    (`pipeline.fetch.fetch_clip`), voiceover
+    (`pipeline.voiceover.generate.generate_voiceover`), assemble
+    (`pipeline.assemble.assemble.assemble_clip`), format-check
+    (`pipeline.format.validate.validate_format`). Each button's result
+    (success/failure, output path) is shown in the UI the same way the
+    CLI prints it today.
+  - This **deliberately reverses** Step 10 and Step 12's "no button or
+    endpoint triggers a pipeline stage" rule, scoped narrowly to the four
+    stages above (plus candidate-selection's job-creation step) — not a
+    blanket reversal. Discovery, script drafting, and the human
+    script-approval checkpoint are explicitly excluded from that reversal
+    and stay exactly as manual as they are today.
+- **Dependencies:** Step 10 (`review-app/` conventions), Step 12 (batch
+  run state to display alongside), Step 11 (`run_batch.py`'s underlying
+  functions, called directly rather than via its CLI), the pipeline
+  modules each button wraps (Steps 4/6/7/9).
+- **Out of scope:** still never calls any posting/publishing API — the
+  finished, approved video sitting in `staged/` is the end of the line;
+  uploading to YouTube stays a manual action you take yourself. No
+  discover/script-drafting automation — those still need you and Claude
+  in a live session. No changes to the permissions ledger from the UI
+  (creators list is read-only). No scheduling/calendar features in this
+  step — just making the deterministic stages clickable.
