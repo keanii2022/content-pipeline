@@ -309,7 +309,7 @@ function renderDetail(manifest, status) {
       <pre>${escapeHtml(manifest.approved_script)}</pre>
     </div>
 
-    <div class="actions">
+    <div class="actions review-actions">
       <button class="approve" data-approved="true">Approve</button>
       <button class="reject" data-approved="false">Reject</button>
     </div>
@@ -318,7 +318,11 @@ function renderDetail(manifest, status) {
     ${renderPublishSection(manifest, status)}
   `;
 
-  for (const button of detailEl.querySelectorAll(".actions button")) {
+  // Scoped to .review-actions specifically, not the broader .actions class
+  // — that class is reused for layout on several other button rows in this
+  // panel (e.g. the Publish section below), and matching all of them here
+  // previously meant clicking Publish silently also fired a reject.
+  for (const button of detailEl.querySelectorAll(".review-actions button")) {
     button.addEventListener("click", () => submitReview(manifest.job_id, button.dataset.approved === "true"));
   }
   const publishBtn = document.getElementById("yt-publish");

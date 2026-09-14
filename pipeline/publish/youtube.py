@@ -168,9 +168,15 @@ def upload_video(
     _check_eligibility(job_id, manifest)
     output_path = _resolve_output_path(job_id, manifest)
 
+    # _get_authenticated_service() first: it's the one with the try/except
+    # that turns a missing google-api-python-client into a clean
+    # YouTubePublishError. Importing MediaFileUpload before that ran (as a
+    # prior version of this function did) hit an unguarded ImportError
+    # instead — this ordering makes sure the friendly error always fires
+    # first when the dependency isn't installed.
+    youtube = _get_authenticated_service()
     from googleapiclient.http import MediaFileUpload
 
-    youtube = _get_authenticated_service()
     body = {
         "snippet": {
             "title": title.strip(),

@@ -261,11 +261,18 @@ function runControlAction(action, args) {
       stderr += chunk;
     });
     child.on("error", reject);
-    child.on("close", () => {
+    child.on("close", (code) => {
       try {
         resolve(JSON.parse(stdout.trim()));
       } catch (err) {
-        reject(new Error(stderr.trim() || `pipeline.control.api produced no parseable output`));
+        // Unparseable stdout means pipeline.control.api crashed outside its
+        // own known-error handling (a real bug, not an expected pipeline
+        // error) — the traceback goes to this server's own log, where a
+        // developer can act on it, never straight into the browser response.
+        if (stderr.trim()) {
+          console.error(`pipeline.control.api action '${action}' crashed (exit ${code}):\n${stderr}`);
+        }
+        reject(new Error(`'${action}' failed unexpectedly (exit ${code}) — see server log for details`));
       }
     });
   });
