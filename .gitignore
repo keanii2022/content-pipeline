@@ -6,6 +6,7 @@
 *.key
 credentials.json
 secrets.json
+data/youtube_token.json
 
 # --- Media assets (video/audio/large binaries) ---
 *.mp4

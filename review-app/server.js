@@ -62,6 +62,12 @@ const CONTROL_ACTIONS = new Set([
   // checkpoint is skimming the finished result in the staged-jobs list,
   // not reading the script text before these deterministic stages run.
   "auto-finish",
+  // The one deliberate, human-triggered exception to "never call a
+  // posting/publishing API" — see pipeline/publish/youtube.py. Still
+  // requires a human-supplied title and an explicit click; refuses jobs
+  // with no recorded permission provenance or a failed/missing
+  // format-compliance check.
+  "publish-youtube",
 ]);
 
 const SAFE_PATH_COMPONENT = /^[A-Za-z0-9_.-]+$/;

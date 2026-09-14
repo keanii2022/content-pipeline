@@ -37,6 +37,7 @@ from pipeline.fetch.fetch_clip import FetchError, fetch_clip
 from pipeline.format.profiles import PROFILES
 from pipeline.format.validate import FormatError, validate_format
 from pipeline.orchestrate.auto_finish import AutoFinishError, auto_finish_job
+from pipeline.publish.youtube import YouTubePublishError, upload_video
 from pipeline.script.draft import DraftError, start_script_job
 from pipeline.voiceover.generate import VoiceoverError, generate_voiceover
 
@@ -155,6 +156,18 @@ def _cmd_auto_finish(args: argparse.Namespace) -> None:
     )
 
 
+def _cmd_publish(args: argparse.Namespace) -> None:
+    result = upload_video(
+        args.job_id,
+        title=args.title,
+        description=args.description,
+        tags=args.tags.split(",") if args.tags else None,
+        category_id=args.category_id,
+        privacy_status=args.privacy,
+    )
+    print(f"Published job '{args.job_id}' to YouTube: {result['url']}")
+
+
 def _cmd_check_format(args: argparse.Namespace) -> None:
     result = validate_format(args.job_id, args.profile, ffprobe_path=args.ffprobe_path)
     status = "PASSED" if result["passed"] else "FAILED"
@@ -248,6 +261,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_check_format.add_argument("--ffprobe-path", default="ffprobe")
     p_check_format.set_defaults(func=_cmd_check_format)
 
+    p_publish = subparsers.add_parser(
+        "publish",
+        help="Upload a staged, format-checked job to YouTube via the Data API "
+        "(the one deliberate exception to this pipeline's manual-publishing rule).",
+    )
+    p_publish.add_argument("job_id")
+    p_publish.add_argument("title")
+    p_publish.add_argument("--description", default="")
+    p_publish.add_argument("--tags", default=None, help="Comma-separated tags.")
+    p_publish.add_argument("--category-id", default="22")
+    p_publish.add_argument(
+        "--privacy", default="private", choices=["private", "unlisted", "public"]
+    )
+    p_publish.set_defaults(func=_cmd_publish)
+
     return parser
 
 
@@ -263,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         VoiceoverError,
         AssembleError,
         FormatError,
+        YouTubePublishError,
     ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

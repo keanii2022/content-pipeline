@@ -26,10 +26,18 @@ from pipeline.assemble.assemble import AssembleError, assemble_clip
 from pipeline.fetch.fetch_clip import FetchError, fetch_clip
 from pipeline.format.validate import FormatError, validate_format
 from pipeline.orchestrate.auto_finish import auto_finish_job
+from pipeline.publish.youtube import YouTubePublishError, upload_video
 from pipeline.script.draft import DraftError, start_script_job
 from pipeline.voiceover.generate import VoiceoverError, generate_voiceover
 
-_KNOWN_ERRORS = (DraftError, FetchError, VoiceoverError, AssembleError, FormatError)
+_KNOWN_ERRORS = (
+    DraftError,
+    FetchError,
+    VoiceoverError,
+    AssembleError,
+    FormatError,
+    YouTubePublishError,
+)
 
 
 def _select_candidate(args: dict[str, Any]) -> dict[str, Any]:
@@ -97,6 +105,21 @@ def _auto_finish(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _publish_youtube(args: dict[str, Any]) -> dict[str, Any]:
+    """The one deliberate, human-triggered exception to this repo's
+    "never call a posting/publishing API" rule — see pipeline.publish.youtube
+    for the eligibility checks (permission provenance + passed
+    format-compliance) this refuses to skip."""
+    return upload_video(
+        args["job_id"],
+        title=args["title"],
+        description=args.get("description", ""),
+        tags=args.get("tags"),
+        category_id=args.get("category_id", "22"),
+        privacy_status=args.get("privacy_status", "private"),
+    )
+
+
 _ACTIONS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "select-candidate": _select_candidate,
     "fetch": _fetch,
@@ -104,6 +127,7 @@ _ACTIONS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "assemble": _assemble,
     "check-format": _check_format,
     "auto-finish": _auto_finish,
+    "publish-youtube": _publish_youtube,
 }
 
 

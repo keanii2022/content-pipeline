@@ -312,3 +312,49 @@ produced by Steps 1, 3, 4, 6, 7, 9, and 14 before each is committed.
   agent invocation; no change to the permissions ledger; no
   posting/publishing integration of any kind; no removal of the
   `load_script` well-formedness check.
+
+## 15. YouTube publishing — the one deliberate posting-API exception
+
+- **Status:** scaffolded, needs credentials to actually run
+- **Scope:** `pipeline/publish/youtube.py` (`upload_video`), wired into
+  `pipeline/control/api.py` as the `publish-youtube` action, into
+  `run_single.py` as the `publish` CLI subcommand, and into
+  `review-app/public/app.js` as a "Publish to YouTube" section on each
+  staged job's detail view (title field pre-filled from the script's own
+  header, editable; description; privacy select; Publish button).
+  OAuth2 "installed app" flow against a Google Cloud OAuth client (Desktop
+  app type) with the YouTube Data API v3 enabled; client secrets expected
+  at `credentials.json` in the repo root (gitignored, same convention as
+  `.env`), refresh token cached at `data/youtube_token.json` (also
+  gitignored) after the first interactive consent. Needs
+  `google-api-python-client`, `google-auth-httplib2`, and
+  `google-auth-oauthlib` — added as the `youtube` optional-dependency group
+  in `pyproject.toml` (`pip install -e .[youtube]`), not a hard dependency
+  of the base install.
+- **Why this is narrower than it looks:** this is the pipeline's first and
+  only code that calls an external posting/publishing API — see the
+  updated boundary rule in `docs/pipeline-stages.md`. It's scoped to
+  YouTube alone, still requires a human to click Publish and type a title
+  per job, and is never chained onto `auto-finish` (Step 14) or any other
+  stage. Before uploading, it refuses (raises `YouTubePublishError`,
+  surfaced as a disabled Publish button + explanation in the control
+  panel) unless the job's manifest has a recorded
+  `permission_ledger_reference` and a `format_compliance.passed: true` —
+  the same provenance and format checks every other stage already enforces,
+  re-checked here rather than trusted.
+- **Dependencies:** Step 7 (staged output + manifest to read), Step 9
+  (format-compliance result the eligibility check reads), Step 13 (control
+  panel this is added to), the `code-reviewer` agent.
+- **Out of scope:** no other platform's posting API; no automatic/
+  unattended publishing of any kind — the click and the title stay human;
+  no thumbnail customization yet (YouTube auto-selects one); no scheduling
+  (publishes immediately at the chosen privacy status, not at a future
+  time).
+- **What you (Keani) still need to provide before this actually works:**
+  a Google Cloud project with the YouTube Data API v3 enabled and an
+  OAuth client (Desktop app type) downloaded as `credentials.json` in the
+  repo root; a decision on default privacy status for new uploads
+  (`private`/`unlisted`/`public` — code currently defaults to `private`
+  so nothing goes live without you changing it per video); confirmation
+  of which Google/YouTube channel the OAuth consent should authorize
+  (i.e. which account you approve the consent screen as).

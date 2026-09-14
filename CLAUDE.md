@@ -15,12 +15,14 @@ posting.
   either a recorded human voiceover or an AI-generated one.
 - **Assembly**: combining clip + commentary (and any supporting captions,
   overlays, etc.) into a finished short-form video file.
-- **Publishing is manual, not automated.** This pipeline prepares finished
-  video files only. No component of this project should auto-publish,
-  auto-upload, or auto-post content to any platform — uploading a staged
-  video to YouTube (or anywhere else) is always a manual action taken
-  outside this repo: copy the file, drop it into the platform's uploader,
-  write a title, hit publish.
+- **Publishing is manual by default, with one explicit, scoped exception:
+  YouTube.** `pipeline/publish/youtube.py` uploads a staged, eligible job
+  via the YouTube Data API — see PLAN.md Step 15 for exactly what
+  "eligible" means and why this is the only platform this repo talks to
+  directly. Every other platform (TikTok, Reels) and every other path
+  through this pipeline stays exactly as before: no auto-publish,
+  auto-upload, or auto-post. Uploading a staged video anywhere other than
+  YouTube is still a fully manual action taken outside this repo.
 - **The human checkpoint is the control panel's finished list, not a
   per-script approval mid-pipeline** (see PLAN.md Step 14). Once
   `content-reviewer` has screened a drafted script, `auto-finish` runs
@@ -28,6 +30,12 @@ posting.
   read the script first — the review point is skimming staged output in
   `review-app` (title, source, format-check result) and deciding what's
   worth uploading, not approving every script's text before it's used.
+- **Publishing to YouTube still requires a human click and a human-typed
+  title, every time** (see PLAN.md Step 15). Nothing calls `upload_video`
+  automatically after `auto-finish` — the two are deliberately not chained.
+  Treat any future request to chain them (or to add a second platform's
+  API) as a scope change to raise explicitly, the same way
+  `docs/pipeline-stages.md` already asks for the original boundary.
 
 ## Working with this repo
 

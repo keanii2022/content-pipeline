@@ -245,7 +245,46 @@ function renderReviewNote(manifest) {
   return `<p class="review-note">Marked ${review.approved ? "approved" : "rejected"} at ${escapeHtml(review.reviewed_at)}</p>`;
 }
 
-function renderDetail(manifest) {
+// Pulls a default video title out of the script header line
+// ("SCRIPT — <title> (<source>, <date>)") so the publish form starts with
+// something reasonable instead of blank — always editable before publish.
+function guessTitleFromScript(approvedScript) {
+  const firstLine = (approvedScript || "").split("\n")[0] || "";
+  const match = firstLine.match(/^SCRIPT\s*[—-]\s*(.+?)\s*\(/);
+  return match ? match[1].trim() : "";
+}
+
+function renderPublishSection(manifest, status) {
+  const fc = manifest.format_compliance;
+  const eligible = Boolean(manifest.permission_ledger_reference) && fc && fc.passed === true;
+  const defaultTitle = guessTitleFromScript(manifest.approved_script);
+  const statusHtml = status
+    ? `<p class="review-note ${status.error ? "action-error" : "action-ok"}">${escapeHtml(status.text)}</p>`
+    : "";
+  return `
+    <div class="section">
+      <h3>Publish to YouTube</h3>
+      ${
+        eligible
+          ? ""
+          : `<p class="review-note action-error">Not eligible yet — needs a recorded permission ledger reference and a passed format-compliance check.</p>`
+      }
+      <input id="yt-title" type="text" placeholder="Title" value="${escapeHtml(defaultTitle)}" ${eligible ? "" : "disabled"} />
+      <textarea id="yt-description" placeholder="Description (optional)" ${eligible ? "" : "disabled"}></textarea>
+      <div class="actions">
+        <select id="yt-privacy" ${eligible ? "" : "disabled"}>
+          <option value="private">private</option>
+          <option value="unlisted">unlisted</option>
+          <option value="public">public</option>
+        </select>
+        <button id="yt-publish" ${eligible ? "" : "disabled"}>Publish</button>
+      </div>
+      ${statusHtml}
+    </div>
+  `;
+}
+
+function renderDetail(manifest, status) {
   const sourceClip = manifest.source_clip || {};
   const ledgerRef = manifest.permission_ledger_reference || {};
 
@@ -275,10 +314,28 @@ function renderDetail(manifest) {
       <button class="reject" data-approved="false">Reject</button>
     </div>
     ${renderReviewNote(manifest)}
+
+    ${renderPublishSection(manifest, status)}
   `;
 
   for (const button of detailEl.querySelectorAll(".actions button")) {
     button.addEventListener("click", () => submitReview(manifest.job_id, button.dataset.approved === "true"));
+  }
+  const publishBtn = document.getElementById("yt-publish");
+  if (publishBtn) publishBtn.addEventListener("click", () => publishToYouTube(manifest.job_id));
+}
+
+async function publishToYouTube(jobId) {
+  const title = document.getElementById("yt-title").value;
+  const description = document.getElementById("yt-description").value;
+  const privacy_status = document.getElementById("yt-privacy").value;
+  try {
+    const result = await runAction("publish-youtube", { job_id: jobId, title, description, privacy_status });
+    const data = await fetchJson(`/api/jobs/${encodeURIComponent(jobId)}`);
+    renderDetail(data.manifest, { text: `Published: ${result.url}` });
+  } catch (err) {
+    const data = await fetchJson(`/api/jobs/${encodeURIComponent(jobId)}`);
+    renderDetail(data.manifest, { text: err.message, error: true });
   }
 }
 

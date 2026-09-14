@@ -19,7 +19,10 @@ For a SCRIPT review:
 3. Is the tone commentary/curious rather than persuasive advocacy for
    the theory or story itself?
 4. Does it work as spoken word — natural pacing, right length for
-   short-form (roughly 75-200 words)?
+   short-form (50-80 spoken words, per pipeline.script.draft.load_script's
+   enforced range for a 20-30 second video — a script outside that range
+   never reaches you, load_script rejects it first, but flag anything that
+   reads as padded or rushed to hit the count)?
 
 For an ASSEMBLED VIDEO review (once staged):
 1. Does the manifest show the format-compliance check (Step 7) passed?

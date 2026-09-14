@@ -1,11 +1,21 @@
 [project]
 name = "content-pipeline"
 version = "0.1.0"
-description = "Content-automation pipeline: source permitted clips, add commentary, assemble short-form video. Publishing is manual."
+description = "Content-automation pipeline: source permitted clips, add commentary, assemble short-form video. Publishing is manual except for an explicit, human-triggered YouTube Data API upload."
 requires-python = ">=3.9"
 dependencies = [
     "PyYAML>=6.0",
     "yt-dlp>=2024.1.0",
+]
+
+[project.optional-dependencies]
+# Only needed for pipeline.publish.youtube — the one deliberate,
+# human-triggered exception to "publishing is manual, not automated".
+# `pip install -e .[youtube]`
+youtube = [
+    "google-api-python-client>=2.100.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.0",
 ]
 
 [build-system]

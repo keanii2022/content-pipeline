@@ -32,15 +32,28 @@ may read and annotate `staged/*/manifest.json` (e.g. toggling a
 `reviewed`/`approved` flag), but that flag is a note for a human, not a
 trigger for any automated action.
 
-Moving a finished piece out of `staged/` and onto an actual platform is
-always a manual, external action performed by a person — outside this
-codebase, using whatever tool that platform requires. This mirrors the
-scope boundary in [CLAUDE.md](../CLAUDE.md): "Publishing is manual, not
-automated."
+Moving a finished piece out of `staged/` and onto an actual platform is a
+manual, external action performed by a person, with one named exception:
+[`pipeline/publish/youtube.py`](../pipeline/publish/youtube.py) (Step 15),
+which uploads a `staged/<job_id>/` output to YouTube via the Data API.
+That exception is narrow and explicit, not a general permission to wire up
+publishing:
 
-If a future change needs to touch this boundary (e.g. wiring up a
-publishing integration), that is a scope change to raise explicitly, not
-something to introduce incidentally while building on top of `staged/`.
+- It's YouTube only. TikTok, Reels, and any other platform still get a
+  finished file and nothing more — this codebase does not talk to their
+  APIs.
+- It still requires a human to trigger it per job (the `publish` CLI
+  subcommand or the control panel's "Publish to YouTube" button) and to
+  supply the title. Nothing chains it onto `auto-finish` or any other
+  stage automatically.
+- It refuses to run against a job with no recorded
+  `permission_ledger_reference` or a format-compliance check that's
+  missing or failed — see `pipeline.publish.youtube._check_eligibility`.
+
+If a future change needs to touch this boundary further (another
+platform's API, or auto-triggering an upload), that is a scope change to
+raise explicitly, not something to introduce incidentally while building
+on top of `staged/`.
 
 ## Related conventions
 
