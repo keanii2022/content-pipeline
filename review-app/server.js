@@ -55,6 +55,13 @@ const CONTROL_ACTIONS = new Set([
   "voiceover",
   "assemble",
   "check-format",
+  // Chains fetch -> voiceover -> assemble -> check-format in one call for a
+  // job whose script.md already exists (script-writer + content-reviewer
+  // have already run) — see pipeline/orchestrate/auto_finish.py. There is
+  // deliberately no separate human-approval action gating this: the human
+  // checkpoint is skimming the finished result in the staged-jobs list,
+  // not reading the script text before these deterministic stages run.
+  "auto-finish",
 ]);
 
 const SAFE_PATH_COMPONENT = /^[A-Za-z0-9_.-]+$/;

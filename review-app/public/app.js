@@ -423,6 +423,17 @@ function renderCurrentJobPanel(status) {
         <button id="ca-checkformat" ${canAssemble ? "" : "disabled"}>Check format</button>
         <button id="ca-clear" class="reject">Clear current job</button>
       </div>
+      <div class="actions">
+        <button id="ca-autofinish" ${canFetch ? "" : "disabled"}>
+          Auto-finish (fetch -&gt; voiceover -&gt; assemble -&gt; check-format)
+        </button>
+      </div>
+      <p class="review-note">
+        Auto-finish assumes work/&lt;job_id&gt;/script.md already exists (script-writer
+        has run) and has been screened by the content-reviewer agent — it does not
+        re-check tone or framing itself. There is no separate approval click after
+        that: the result lands in Staged Jobs below for you to skim.
+      </p>
       ${statusHtml}
     </div>
   `;
@@ -485,6 +496,8 @@ function wireControlActions() {
     saveCurrentJob(null);
     renderControlDetail();
   });
+  const autoFinishBtn = document.getElementById("ca-autofinish");
+  if (autoFinishBtn) autoFinishBtn.addEventListener("click", doAutoFinish);
 }
 
 async function selectCandidate(candidateIndex) {
@@ -542,6 +555,29 @@ async function doAssemble() {
       clip_id: currentJob.clip_id,
     });
     renderControlDetail({ text: `Assembled at ${result.output_path}` });
+    await loadJobs(); // the new staged job now shows up in the Staged Jobs tab
+  } catch (err) {
+    renderControlDetail({ text: err.message, error: true });
+  }
+}
+
+async function doAutoFinish() {
+  const profile = document.getElementById("ca-profile").value;
+  try {
+    const result = await runAction("auto-finish", {
+      job_id: currentJob.job_id,
+      creator_id: currentJob.creator_id,
+      batch_id: currentJob.batch_id,
+      candidate_index: currentJob.candidate_index,
+      format_profile: profile,
+    });
+    saveCurrentJob({ ...currentJob, clip_id: result.clip_id });
+    renderControlDetail({
+      text: `Auto-finished '${result.job_id}' — format (${profile}): ${
+        result.format_passed ? "PASSED" : "FAILED"
+      }${result.format_reasons && result.format_reasons.length ? " — " + result.format_reasons.join("; ") : ""}. Output at ${result.output_path}`,
+      error: !result.format_passed,
+    });
     await loadJobs(); // the new staged job now shows up in the Staged Jobs tab
   } catch (err) {
     renderControlDetail({ text: err.message, error: true });

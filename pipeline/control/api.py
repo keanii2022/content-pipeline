@@ -25,6 +25,7 @@ from typing import Any, Callable
 from pipeline.assemble.assemble import AssembleError, assemble_clip
 from pipeline.fetch.fetch_clip import FetchError, fetch_clip
 from pipeline.format.validate import FormatError, validate_format
+from pipeline.orchestrate.auto_finish import auto_finish_job
 from pipeline.script.draft import DraftError, start_script_job
 from pipeline.voiceover.generate import VoiceoverError, generate_voiceover
 
@@ -78,12 +79,31 @@ def _check_format(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _auto_finish(args: dict[str, Any]) -> dict[str, Any]:
+    """Chains fetch -> voiceover -> assemble -> check-format for a job
+    whose script.md already exists (written by script-writer, screened by
+    content-reviewer) — see pipeline.orchestrate.auto_finish for why this
+    has no separate human-approval gate of its own."""
+    return auto_finish_job(
+        args["job_id"],
+        args["creator_id"],
+        args["batch_id"],
+        args["candidate_index"],
+        args["format_profile"],
+        clip_id=args.get("clip_id"),
+        yt_dlp_path=args.get("yt_dlp_path", "yt-dlp"),
+        ffmpeg_path=args.get("ffmpeg_path", "ffmpeg"),
+        ffprobe_path=args.get("ffprobe_path", "ffprobe"),
+    )
+
+
 _ACTIONS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "select-candidate": _select_candidate,
     "fetch": _fetch,
     "voiceover": _voiceover,
     "assemble": _assemble,
     "check-format": _check_format,
+    "auto-finish": _auto_finish,
 }
 
 

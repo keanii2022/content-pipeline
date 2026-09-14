@@ -11,15 +11,16 @@ dashboard only (Steps 10, 12).
 
 Agent use: candidate clip discovery (Step 2) uses the `researcher` agent to
 surface options for you to pick from; commentary script drafting (Step 5)
-uses the dedicated `script-writer` agent (`~/.claude/agents/script-writer.md`)
-for a first-pass draft, which the `content-reviewer` agent then screens for
-framing/tone before it reaches you — you still review/edit the script
-yourself; neither agent's output is ever final or auto-approved. Discovery
-still has no dedicated custom agent yet; it can be handed to a purpose-built
-one later without changing the pipeline's structure. Separately, the
-`code-reviewer` agent (project-local, mirrors the global `reviewer` agent)
-screens the actual pipeline code produced by Steps 1, 3, 4, 6, 7, and 9
-before each is committed.
+uses the dedicated `script-writer` agent (project-local:
+`.claude/agents/script-writer.md`) for a first-pass draft, which the
+`content-reviewer` agent then screens for framing/tone. **As of Step 14,
+that content-reviewer screen is the gate** — a per-script human
+read-through is no longer required before the pipeline continues. You can
+still open and edit any `work/<job_id>/script.md` by hand at any point;
+nothing prevents that. But it's no longer a blocking checkpoint the
+pipeline waits on. Separately, the `code-reviewer` agent (project-local,
+mirrors the global `reviewer` agent) screens the actual pipeline code
+produced by Steps 1, 3, 4, 6, 7, 9, and 14 before each is committed.
 
 ---
 
@@ -274,3 +275,40 @@ before each is committed.
   in a live session. No changes to the permissions ledger from the UI
   (creators list is read-only). No scheduling/calendar features in this
   step — just making the deterministic stages clickable.
+
+## 14. Auto-finish: collapse fetch/voiceover/assemble/check-format into one action
+
+- **Status:** done
+- **Scope:** `pipeline/orchestrate/auto_finish.py` (`auto_finish_job`),
+  wired into `pipeline/control/api.py` as the `auto-finish` action and into
+  `run_single.py` as the `auto-finish` CLI subcommand, plus a matching
+  "Auto-finish" button in `review-app/public/app.js`. Once a job's
+  `work/<job_id>/script.md` exists and has passed the `content-reviewer`
+  agent's screen, `auto-finish` runs fetch, voiceover, assemble, and
+  check-format back to back and lands the result in `staged/` — one action
+  instead of four separate manual clicks/commands, each previously
+  requiring you to wait and confirm before the next.
+- **Why:** you don't have time to read and approve every script by hand
+  before a batch can finish. The human checkpoint for a given clip moves
+  from "approve the script text mid-pipeline" to "skim the finished list
+  in the control panel and pick what sounds good" — a ~30-second glance at
+  titles/sources, not a per-video watch, unless you want to watch one.
+  `auto-finish` still refuses to run (via `load_script`'s well-formedness
+  check) if no script exists yet for that job, so it can't silently
+  process an empty or malformed draft.
+- **What stays exactly as before:** discovery and script drafting still
+  require a live Claude Code session to invoke the `researcher` and
+  `script-writer` agents — nothing here automates picking a candidate or
+  writing a script. The permissions ledger gate (Step 1) is unchanged and
+  still re-validated inside `fetch_clip`/`load_candidate`. Uploading a
+  staged, approved video to YouTube (or any platform) is still a fully
+  manual action you take yourself outside this repo — copy the file, drop
+  it into YouTube's uploader, write a title, hit publish. Nothing here
+  calls a posting/publishing API; see `docs/pipeline-stages.md`'s boundary
+  rule, which this step does not touch.
+- **Dependencies:** Steps 4, 6, 7, 9 (the four functions this chains),
+  Step 13 (control panel button), the `code-reviewer` agent.
+- **Out of scope:** no change to discovery or script-writer/content-reviewer
+  agent invocation; no change to the permissions ledger; no
+  posting/publishing integration of any kind; no removal of the
+  `load_script` well-formedness check.

@@ -36,6 +36,7 @@ from pipeline.discover.find_candidates import (
 from pipeline.fetch.fetch_clip import FetchError, fetch_clip
 from pipeline.format.profiles import PROFILES
 from pipeline.format.validate import FormatError, validate_format
+from pipeline.orchestrate.auto_finish import AutoFinishError, auto_finish_job
 from pipeline.script.draft import DraftError, start_script_job
 from pipeline.voiceover.generate import VoiceoverError, generate_voiceover
 
@@ -78,10 +79,14 @@ def _cmd_select_candidate(args: argparse.Namespace) -> None:
     print(prompt)
     print(
         f"\nThen have the `content-reviewer` agent screen work/{job_id}/script.md "
-        "for framing/tone, and review/edit it yourself. Once you approve the "
-        "script, run:\n"
-        f"  fetch {args.creator_id} {args.batch_id} {args.candidate_index}\n"
-        f"  voiceover {job_id}"
+        "for framing/tone. That screen is the gate — there is no separate "
+        "human read-through required before continuing. Once content-reviewer "
+        "passes it, run:\n"
+        f"  auto-finish {job_id} {args.creator_id} {args.batch_id} "
+        f"{args.candidate_index} <profile>\n"
+        "which chains fetch -> voiceover -> assemble -> check-format in one "
+        "call; the result lands in staged/ (and the control panel) for you "
+        "to skim, not for you to approve mid-pipeline."
     )
 
 
@@ -120,6 +125,33 @@ def _cmd_assemble(args: argparse.Namespace) -> None:
         "\nOnce ready, check it against a platform's format profile:\n"
         f"  check-format {args.job_id} <profile>\n"
         f"  (profiles: {', '.join(sorted(PROFILES))})"
+    )
+
+
+def _cmd_auto_finish(args: argparse.Namespace) -> None:
+    result = auto_finish_job(
+        args.job_id,
+        args.creator_id,
+        args.batch_id,
+        args.candidate_index,
+        args.profile,
+        yt_dlp_path=args.yt_dlp_path,
+        ffmpeg_path=args.ffmpeg_path,
+        ffprobe_path=args.ffprobe_path,
+    )
+    status = "PASSED" if result["format_passed"] else "FAILED"
+    print(f"Auto-finished job '{result['job_id']}':")
+    print(f"  clip_id: {result['clip_id']}")
+    print(f"  voiceover: {result['voiceover_path']}")
+    print(f"  output: {result['output_path']}")
+    print(f"  manifest: {result['manifest_path']}")
+    print(f"  format ({result['format_profile']}): {status}")
+    for reason in result["format_reasons"]:
+        print(f"    - {reason}")
+    print(
+        "\nStaged for the control panel. This pipeline stops here — nothing "
+        "in this repo publishes or uploads it anywhere; posting it is a "
+        "manual, external action."
     )
 
 
@@ -192,6 +224,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_assemble.add_argument("clip_id")
     p_assemble.add_argument("--ffmpeg-path", default="ffmpeg")
     p_assemble.set_defaults(func=_cmd_assemble)
+
+    p_auto_finish = subparsers.add_parser(
+        "auto-finish",
+        help="Chain fetch -> voiceover -> assemble -> check-format for a job "
+        "whose script.md already exists and has been content-reviewer-screened.",
+    )
+    p_auto_finish.add_argument("job_id")
+    p_auto_finish.add_argument("creator_id")
+    p_auto_finish.add_argument("batch_id")
+    p_auto_finish.add_argument("candidate_index", type=int)
+    p_auto_finish.add_argument("profile", choices=sorted(PROFILES))
+    p_auto_finish.add_argument("--yt-dlp-path", default="yt-dlp")
+    p_auto_finish.add_argument("--ffmpeg-path", default="ffmpeg")
+    p_auto_finish.add_argument("--ffprobe-path", default="ffprobe")
+    p_auto_finish.set_defaults(func=_cmd_auto_finish)
 
     p_check_format = subparsers.add_parser(
         "check-format", help="Validate staged output against a platform format profile."

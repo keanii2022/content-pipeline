@@ -16,9 +16,18 @@ posting.
 - **Assembly**: combining clip + commentary (and any supporting captions,
   overlays, etc.) into a finished short-form video file.
 - **Publishing is manual, not automated.** This pipeline prepares finished
-  video files only. Every finished piece requires manual review and approval
-  before it is posted anywhere. No component of this project should
-  auto-publish, auto-upload, or auto-post content to any platform.
+  video files only. No component of this project should auto-publish,
+  auto-upload, or auto-post content to any platform — uploading a staged
+  video to YouTube (or anywhere else) is always a manual action taken
+  outside this repo: copy the file, drop it into the platform's uploader,
+  write a title, hit publish.
+- **The human checkpoint is the control panel's finished list, not a
+  per-script approval mid-pipeline** (see PLAN.md Step 14). Once
+  `content-reviewer` has screened a drafted script, `auto-finish` runs
+  fetch/voiceover/assemble/check-format without pausing for a human to
+  read the script first — the review point is skimming staged output in
+  `review-app` (title, source, format-check result) and deciding what's
+  worth uploading, not approving every script's text before it's used.
 
 ## Working with this repo
 
