@@ -66,3 +66,12 @@ Thumbs.db
 logs/
 tmp/
 .cache/
+
+# --- Pipeline run artifacts (generated locally per run, not source) ---
+/data/candidates/
+/data/used_facts.json
+/staged/*/
+/work/*/
+
+# --- Internal/dev notes (kept locally, not published) ---
+/notes/
