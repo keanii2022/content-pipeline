@@ -1,5 +1,7 @@
 # content-pipeline
 
+[![tests](https://github.com/keanii2022/content-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/keanii2022/content-pipeline/actions/workflows/tests.yml)
+
 A content-automation pipeline for short-form video. It sources clips from
 creators who've explicitly OK'd reuse, layers an AI-generated voiceover on
 top, and assembles a finished 9:16 video — then stops. Publishing is a
