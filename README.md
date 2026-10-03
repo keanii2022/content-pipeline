@@ -64,10 +64,13 @@ format check, and moved the word limits. Each change made a test fail.
 
 ## A bug I found, and what it changed
 
-The reviewer agent's instructions said scripts should be "roughly 75–200
-words". The code actually rejects anything outside 50–80. So the AI
-reviewer was approving scripts that the next step would throw out. I
-fixed the instructions to match the code. Then I added
+The writer agent and the code both used 50–80 words for a script. The
+reviewer agent's instructions said "roughly 75–200 words". The code
+rejects anything outside 50–80 before the reviewer sees it, so the
+reviewer was judging every valid script by the wrong rule. An agent using
+the wrong rule doesn't throw an error, so nothing flagged it. I caught it
+by reading the instructions next to the code. I fixed the instructions to
+match the code. Then I added
 `test_content_reviewer_word_limit_matches_code`, which reads the agent's
 instructions and fails if their word range ever drifts from the limit
 the code enforces. What I took from it: an agent's prompt is part of the
