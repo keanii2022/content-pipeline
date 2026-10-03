@@ -17,6 +17,10 @@ youtube = [
     "google-auth-httplib2>=0.2.0",
     "google-auth-oauthlib>=1.2.0",
 ]
+# `pip install -e .[test]` — runs offline; the suite mocks every network call.
+test = [
+    "pytest>=8",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -24,3 +28,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["pipeline*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
