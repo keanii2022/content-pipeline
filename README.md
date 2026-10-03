@@ -2,61 +2,90 @@
 
 [![tests](https://github.com/keanii2022/content-pipeline/actions/workflows/tests.yml/badge.svg)](https://github.com/keanii2022/content-pipeline/actions/workflows/tests.yml)
 
-A content-automation pipeline for short-form video. It sources clips from
-creators who've explicitly OK'd reuse, layers an AI-generated voiceover on
-top, and assembles a finished 9:16 video — then stops. Publishing is a
-manual, human decision everywhere, with one narrow exception: a YouTube
-upload path that still requires a human click and a human-typed title
-every time.
+## What it does
 
-I built this to get from "here's an interesting clip" to "finished short
-with commentary" without babysitting every step by hand, while keeping the
-two things that actually matter — content permissions and the decision to
-publish — firmly in human hands.
+It turns a clip from a creator who has OK'd reuse into a finished
+short-form video with AI-written commentary and an AI voiceover. AI does
+the research and drafting, plain code does the video work, and a person
+makes every decision about what gets published.
 
 ## How it works
 
-- **Discover** — an AI research pass scans a permitted creator's public
-  catalog and surfaces candidate clips for a human to pick from.
-- **Script** — an AI drafts commentary for the chosen clip; a second AI
-  pass screens the draft for tone/framing before anything downstream runs.
-- **Fetch → voiceover → assemble → format-check** — deterministic steps,
-  no AI involved: download the clip, generate a TTS voiceover, stitch it
-  together with ffmpeg into 9:16, and validate the result against
-  TikTok/Reels/Shorts specs.
-- **Review** — a local dashboard lists finished jobs with their source
-  clip, permission record, and format-check result, so a human can decide
-  what's actually worth posting.
-- **Publish** — manual everywhere except YouTube, where an API button
-  still requires a human click and a human-typed title per video.
-- **Local only** — no deployed link; the dashboard is a `localhost` tool
-  you run alongside the pipeline (see below).
+Three AI agents, each with one narrow job (defined in `.claude/agents/`):
 
-## Tech stack
+| Agent | Job | What it can't do |
+| --- | --- | --- |
+| `script-writer` | Researches the clip and drafts a 50–80 word commentary script | Pick the clip, fetch media, or call its own script final |
+| `content-reviewer` | Checks the draft for tone, framing, and length, then approves it or flags it for a human | Edit anything |
+| `code-reviewer` | Reviews code changes to this repo before I approve them | Change code (read-only) |
 
-- **Python** — pipeline logic: clip fetch (`yt-dlp`), TTS voiceover
-  (ElevenLabs), video assembly (`ffmpeg`), format validation, and a
-  permissions ledger (`PyYAML`)
-- **Node.js** — local review dashboard (vanilla JS, no framework)
-- **YouTube Data API v3** — the one deliberate, human-triggered publish
-  integration
+After the script is approved, plain code (no AI) downloads the clip,
+makes the voiceover, stitches the video together in 9:16, and checks it
+against TikTok/Reels/Shorts specs.
 
-## Running locally
+**Where a human approves:**
 
-Requires Python 3.9+, Node 18+, and `ffmpeg`/`yt-dlp` on your `PATH`.
+1. **Which creators are allowed.** Only creators on a hand-kept allowlist
+   (`data/permissions/allowlist.yaml`) can be sourced, and every job
+   records which permission it relied on.
+2. **Which clip.** The research pass suggests clips; a person picks one.
+3. **Flagged scripts.** If `content-reviewer` flags a script, it waits
+   for a person.
+4. **What's worth posting.** Finished videos land in a local review
+   dashboard showing the source, permission record, and format check.
+   A person decides.
+5. **Publishing.** Manual everywhere. The one exception is YouTube, and
+   that still needs a person to click Publish and type the title for
+   every video. Publishing is never chained to the pipeline finishing.
 
-```bash
-# Pipeline
-python3 -m venv .venv
-.venv/bin/pip install -e .
-cp .env.example .env   # fill in your ElevenLabs credentials
+## How I know it works
 
-# Review dashboard
-cd review-app && npm install && node server.js
-# -> http://localhost:4173
+The release gates and the word-count rule have tests that run on every
+push (badge above). They run offline: the network is blocked and the
+YouTube login is faked, so they can't post anything. Real output:
+
+```
+test_publish_refuses_job_missing_permission_provenance PASSED
+test_publish_refuses_job_without_passed_format_check[format-check-never-ran] PASSED
+test_publish_refuses_job_without_passed_format_check[format-check-failed] PASSED
+test_publish_lets_an_eligible_job_through_to_login PASSED
+test_content_reviewer_word_limit_matches_code PASSED
+test_word_count_accepts_scripts_at_its_limits[50] PASSED
+test_word_count_accepts_scripts_at_its_limits[80] PASSED
+test_word_count_rejects_scripts_just_outside_its_limits[49] PASSED
+test_word_count_rejects_scripts_just_outside_its_limits[81] PASSED
+9 passed
 ```
 
-Drive individual pipeline stages from the CLI:
+I also checked that the tests catch real breakage. I broke the code on
+purpose in a scratch copy: I removed the permission check, loosened the
+format check, and moved the word limits. Each change made a test fail.
+
+## A bug I found, and what it changed
+
+The reviewer agent's instructions said scripts should be "roughly 75–200
+words". The code actually rejects anything outside 50–80. So the AI
+reviewer was approving scripts that the next step would throw out. I
+fixed the instructions to match the code. Then I added
+`test_content_reviewer_word_limit_matches_code`, which reads the agent's
+instructions and fails if their word range ever drifts from the limit
+the code enforces. What I took from it: an agent's prompt is part of the
+system, so it gets tested like code.
+
+## How to run it
+
+Needs Python 3.9+, Node 18+, and `ffmpeg` and `yt-dlp` installed.
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e ".[test]"
+.venv/bin/pytest -v                 # the tests above
+
+cp .env.example .env                # add your ElevenLabs key for voiceovers
+cd review-app && npm install && node server.js   # dashboard at http://localhost:4173
+```
+
+Pipeline stages can also be run from the command line:
 
 ```bash
 python -m pipeline.orchestrate.run_single discover <creator_id>
@@ -64,21 +93,23 @@ python -m pipeline.orchestrate.run_single auto-finish <job_id> <creator_id> <bat
 python -m pipeline.orchestrate.run_single publish <job_id> "<title>"
 ```
 
-...or drive the deterministic stages (fetch/voiceover/assemble/format-check/
-select-candidate) from the dashboard's Control Panel tab instead. Discovery
-and script drafting are AI-assisted and run through a live Claude Code
-session rather than the dashboard.
+YouTube publishing needs your own Google Cloud OAuth client saved as
+`credentials.json` and `pip install -e ".[youtube]"`.
 
-Publishing to YouTube needs a Google Cloud OAuth client saved as
-`credentials.json` in the repo root, and the optional dependency group:
-`pip install -e .[youtube]`.
+## How I build it with Claude Code
+
+`CLAUDE.md` holds the project's ground rules for Claude Code. It
+covers sourcing only permitted clips and treating permission checks as
+safety-critical. It also keeps publishing a manual, human action, and
+says any request to automate it is a scope change to raise, not
+something to just do. The agent files in `.claude/agents/` keep each AI
+step's job, tools, and limits separate.
 
 ## Status
 
-- **Working:** permissions ledger, clip fetch, TTS voiceover, ffmpeg
-  assembly, format validation, batch orchestration, and the review
-  dashboard/control panel.
-- **Scaffolded, not yet run end-to-end:** YouTube publishing
-  (`pipeline/publish/youtube.py`) is fully implemented but I haven't wired
-  up my own Google Cloud OAuth client to actually test an upload yet.
-- **Not done:** no automated test suite yet.
+- **Working:** permission checks, clip fetch, voiceover, video assembly,
+  format checks, batch runs, and the review dashboard.
+- **Built but not yet run for real:** the YouTube upload. The safety
+  checks before it are tested, but I haven't connected my own Google
+  account to do a live upload yet.
+- Runs locally only; there's no hosted version.
