@@ -4,7 +4,7 @@
 
 ## What it does
 
-It turns a clip from a creator who has OK'd reuse into a finished
+It turns a clip whose reuse I've verified is permitted into a finished
 short-form video with AI-written commentary and an AI voiceover. AI does
 the research and drafting, plain code does the video work, and a person
 makes every decision about what gets published.
@@ -26,8 +26,9 @@ against TikTok/Reels/Shorts specs.
 **Where a human approves:**
 
 1. **Which creators are allowed.** Only creators on a hand-kept allowlist
-   (`data/permissions/allowlist.yaml`) can be sourced, and every job
-   records which permission it relied on.
+   (`data/permissions/allowlist.yaml`) can be sourced. Each entry has
+   evidence of why reuse is allowed (right now: NASA, whose media is
+   public domain). Every job records which permission it relied on.
 2. **Which clip.** The research pass suggests clips; a person picks one.
 3. **Flagged scripts.** If `content-reviewer` flags a script, it waits
    for a person.
