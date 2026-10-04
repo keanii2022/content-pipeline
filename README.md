@@ -19,6 +19,10 @@ Three AI agents, each with one narrow job (defined in `.claude/agents/`):
 | `content-reviewer` | Checks the draft for tone, framing, and length, then approves it or flags it for a human | Edit anything |
 | `code-reviewer` | Reviews code changes to this repo before I approve them | Change code (read-only) |
 
+Finding candidate clips uses a fourth, general-purpose `researcher`
+agent. It isn't in this repo (it lives in my own `~/.claude/agents/`),
+so a fresh clone needs its own read-only research agent for that step.
+
 After the script is approved, plain code (no AI) downloads the clip,
 makes the voiceover, stitches the video together in 9:16, and checks it
 against TikTok/Reels/Shorts specs.
@@ -30,8 +34,9 @@ against TikTok/Reels/Shorts specs.
    evidence of why reuse is allowed (right now: NASA, whose media is
    public domain). Every job records which permission it relied on.
 2. **Which clip.** The research pass suggests clips; a person picks one.
-3. **Flagged scripts.** If `content-reviewer` flags a script, it waits
-   for a person.
+3. **Flagged scripts.** If `content-reviewer` flags a script, a person
+   looks at it before `auto-finish` runs. That's a working rule, not a
+   check in the code: `auto-finish` doesn't read the reviewer's verdict.
 4. **What's worth posting.** Finished videos land in a local review
    dashboard showing the source, permission record, and format check.
    A person decides.
@@ -89,16 +94,21 @@ cp .env.example .env                # add your ElevenLabs key for voiceovers
 cd review-app && npm install && node server.js   # dashboard at http://localhost:4173
 ```
 
-Pipeline stages can also be run from the command line:
+Pipeline stages can also be run from the command line, in this order.
+Each one prints the exact next command:
 
 ```bash
-python -m pipeline.orchestrate.run_single discover <creator_id>
-python -m pipeline.orchestrate.run_single auto-finish <job_id> <creator_id> <batch_id> <candidate_index> <profile>
-python -m pipeline.orchestrate.run_single publish <job_id> "<title>"
+.venv/bin/python -m pipeline.orchestrate.run_single discover <creator_id>
+# run the researcher agent on the prompt it prints, save its JSON list, then:
+.venv/bin/python -m pipeline.orchestrate.run_single record-candidates <creator_id> <candidates.json>
+.venv/bin/python -m pipeline.orchestrate.run_single select-candidate <creator_id> <batch_id> <candidate_index>
+# run script-writer, then content-reviewer, on the job it creates, then:
+.venv/bin/python -m pipeline.orchestrate.run_single auto-finish <job_id> <creator_id> <batch_id> <candidate_index> <profile>
+.venv/bin/python -m pipeline.orchestrate.run_single publish <job_id> "<title>"   # uploads as private unless --privacy says otherwise
 ```
 
 YouTube publishing needs your own Google Cloud OAuth client saved as
-`credentials.json` and `pip install -e ".[youtube]"`.
+`credentials.json` and `.venv/bin/pip install -e ".[youtube]"`.
 
 ## How I build it with Claude Code
 
@@ -113,7 +123,8 @@ step's job, tools, and limits separate.
 
 - **Working:** permission checks, clip fetch, voiceover, video assembly,
   format checks, batch runs, and the review dashboard.
-- **Built but not yet run for real:** the YouTube upload. The safety
-  checks before it are tested, but I haven't connected my own Google
-  account to do a live upload yet.
+- **YouTube upload works.** On 2026-10-04 I connected my own Google
+  account and uploaded a test video from the dashboard as private
+  ([screenshot](docs/youtube-upload.webp)). My Google Cloud app is in
+  "Testing" mode, so Google asks me to sign in again about once a week.
 - Runs locally only; there's no hosted version.
