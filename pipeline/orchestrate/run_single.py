@@ -151,8 +151,9 @@ def _cmd_auto_finish(args: argparse.Namespace) -> None:
         print(f"    - {reason}")
     print(
         "\nStaged for the control panel. This pipeline stops here — nothing "
-        "in this repo publishes or uploads it anywhere; posting it is a "
-        "manual, external action."
+        "uploads it automatically. Posting it is a manual action: the "
+        "`publish` command or the control panel's YouTube button, or by "
+        "hand for any other platform."
     )
 
 
@@ -180,8 +181,9 @@ def _cmd_check_format(args: argparse.Namespace) -> None:
     print(f"\nResult recorded in staged/{args.job_id}/manifest.json")
     print(
         "\nThis pipeline stops here. Review the staged output yourself — "
-        "nothing in this repo publishes or uploads it anywhere; posting it "
-        "is a manual, external action."
+        "nothing uploads it automatically. Posting it is a manual action: "
+        "the `publish` command or the control panel's YouTube button, or "
+        "by hand for any other platform."
     )
 
 

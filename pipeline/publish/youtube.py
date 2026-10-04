@@ -29,8 +29,10 @@ gitignored, same convention as .env).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -109,6 +111,7 @@ def _get_authenticated_service():
     lazily so the rest of this module (eligibility checks, path handling)
     stays importable/testable without those packages installed."""
     try:
+        from google.auth.exceptions import RefreshError
         from google.auth.transport.requests import Request
         from google.oauth2.credentials import Credentials
         from google_auth_oauthlib.flow import InstalledAppFlow
@@ -134,10 +137,20 @@ def _get_authenticated_service():
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except RefreshError:
+                # A Google Cloud app left in "Testing" mode has its refresh
+                # tokens revoked after 7 days — fall through to a fresh
+                # consent flow instead of crashing.
+                creds = None
+        if not creds or not creds.valid:
             flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_SECRETS_PATH), SCOPES)
-            creds = flow.run_local_server(port=0)
+            # run_local_server prints its "visit this URL" prompt to stdout,
+            # which pipeline.control.api reserves for its one JSON result —
+            # send it to stderr so the control panel can still parse it.
+            with contextlib.redirect_stdout(sys.stderr):
+                creds = flow.run_local_server(port=0)
         TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
         TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
 

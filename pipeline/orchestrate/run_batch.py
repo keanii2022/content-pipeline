@@ -449,8 +449,9 @@ def _cmd_check_format(args: argparse.Namespace) -> None:
     print(f"\nResult recorded in staged/{job_id}/manifest.json")
     print(
         "\nThis pipeline stops here. Review the staged output yourself — "
-        "nothing in this repo publishes or uploads it anywhere; posting it "
-        "is a manual, external action."
+        "nothing uploads it automatically. Posting it is a manual action: "
+        "the `publish` command or the control panel's YouTube button, or "
+        "by hand for any other platform."
     )
 
 
