@@ -245,19 +245,12 @@ function renderReviewNote(manifest) {
   return `<p class="review-note">Marked ${review.approved ? "approved" : "rejected"} at ${escapeHtml(review.reviewed_at)}</p>`;
 }
 
-// Pulls a default video title out of the script header line
-// ("SCRIPT — <title> (<source>, <date>)") so the publish form starts with
-// something reasonable instead of blank — always editable before publish.
-function guessTitleFromScript(approvedScript) {
-  const firstLine = (approvedScript || "").split("\n")[0] || "";
-  const match = firstLine.match(/^SCRIPT\s*[—-]\s*(.+?)\s*\(/);
-  return match ? match[1].trim() : "";
-}
-
+// The title box deliberately starts empty: every upload needs a title a
+// person typed for this video (see CLAUDE.md). Pre-filling it from the
+// script once let the wrong job go out under its old title untouched.
 function renderPublishSection(manifest, status) {
   const fc = manifest.format_compliance;
   const eligible = Boolean(manifest.permission_ledger_reference) && fc && fc.passed === true;
-  const defaultTitle = guessTitleFromScript(manifest.approved_script);
   const statusHtml = status
     ? `<p class="review-note ${status.error ? "action-error" : "action-ok"}">${escapeHtml(status.text)}</p>`
     : "";
@@ -269,7 +262,7 @@ function renderPublishSection(manifest, status) {
           ? ""
           : `<p class="review-note action-error">Not eligible yet — needs a recorded permission ledger reference and a passed format-compliance check.</p>`
       }
-      <input id="yt-title" type="text" placeholder="Title" value="${escapeHtml(defaultTitle)}" ${eligible ? "" : "disabled"} />
+      <input id="yt-title" type="text" placeholder="Title" value="" ${eligible ? "" : "disabled"} />
       <textarea id="yt-description" placeholder="Description (optional)" ${eligible ? "" : "disabled"}></textarea>
       <div class="actions">
         <select id="yt-privacy" ${eligible ? "" : "disabled"}>
