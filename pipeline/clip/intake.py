@@ -39,6 +39,22 @@ MAX_DURATION_SECONDS = 3 * 60 * 60
 RIGHTS_ALLOWLIST = "allowlist"
 RIGHTS_OWN = "own"
 RIGHTS_UNVERIFIED = "unverified"
+RIGHTS_BASES = (RIGHTS_ALLOWLIST, RIGHTS_OWN, RIGHTS_UNVERIFIED)
+
+# What every later clip-mode file must carry forward from metadata.json.
+PROVENANCE_FIELDS = (
+    "source_kind",
+    "source_url",
+    "original_filename",
+    "title",
+    "uploader",
+    "uploader_url",
+    "channel_id",
+    "channel_url",
+    "license",
+    "rights_basis",
+    "permission_ledger_reference",
+)
 
 _SAFE_PATH_COMPONENT = re.compile(r"^[A-Za-z0-9_.-]+$")
 # Stricter than _SAFE_PATH_COMPONENT, which would let "." and ".." through.
@@ -255,6 +271,76 @@ def _write_metadata(source_dir: Path, metadata: dict[str, Any]) -> None:
     with (source_dir / "metadata.json").open("w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
         f.write("\n")
+
+
+def load_source(source_id: str) -> tuple[Path, dict[str, Any]]:
+    """Return (path to the source video, its metadata) for a finished intake.
+
+    Refuses a source whose provenance is incomplete rather than letting a
+    later step fill the gap with a guess.
+    """
+    if not isinstance(source_id, str) or not _SOURCE_ID.match(source_id):
+        raise IntakeError(f"source_id '{source_id}' must look like 20261113T101500Z-a1b2c3")
+    source_dir = RAW_CLIP_DIR / source_id
+    metadata_path = source_dir / "metadata.json"
+    if not metadata_path.is_file():
+        raise IntakeError(f"no clip-mode source '{source_id}' — run intake first")
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise IntakeError(f"{metadata_path} is not valid JSON") from exc
+    if not isinstance(metadata, dict) or metadata.get("source_id") != source_id:
+        raise IntakeError(f"{metadata_path} does not describe source '{source_id}'")
+
+    missing = [field for field in PROVENANCE_FIELDS if field not in metadata]
+    if missing:
+        raise IntakeError(f"{metadata_path} is missing provenance field(s): {missing}")
+    rights_basis = metadata["rights_basis"]
+    if rights_basis not in RIGHTS_BASES:
+        raise IntakeError(
+            f"{metadata_path} has rights_basis {rights_basis!r}, "
+            f"expected one of {list(RIGHTS_BASES)}"
+        )
+    # The fields must also agree with each other, the way intake writes
+    # them — otherwise an edited file could claim a basis it has no
+    # evidence for and every later step would repeat it.
+    source_kind = metadata["source_kind"]
+    if source_kind not in ("url", "file"):
+        raise IntakeError(f"{metadata_path} has source_kind {source_kind!r}")
+    origin_field = "source_url" if source_kind == "url" else "original_filename"
+    if not _string_or_none(metadata[origin_field]):
+        raise IntakeError(f"{metadata_path} has no '{origin_field}' — origin unknown")
+    if rights_basis == RIGHTS_OWN and source_kind != "file":
+        raise IntakeError(
+            f"{metadata_path} has rights_basis 'own' on a downloaded source — "
+            "only a local file can be marked own"
+        )
+    if rights_basis == RIGHTS_ALLOWLIST:
+        reference = metadata["permission_ledger_reference"]
+        if source_kind != "url" or not (
+            isinstance(reference, dict) and _string_or_none(reference.get("creator_id"))
+        ):
+            raise IntakeError(
+                f"{metadata_path} has rights_basis 'allowlist' with no "
+                "permission_ledger_reference behind it"
+            )
+
+    source_file = metadata.get("source_file")
+    if (
+        not isinstance(source_file, str)
+        or source_file in ("", ".", "..")
+        or Path(source_file).name != source_file
+    ):
+        raise IntakeError(f"{metadata_path} has an invalid 'source_file' value")
+    source_path = source_dir / source_file
+    if not source_path.is_file():
+        raise IntakeError(f"source video missing at {source_path}")
+    return source_path, metadata
+
+
+def provenance(metadata: dict[str, Any]) -> dict[str, Any]:
+    """The provenance block to copy, unchanged, into a downstream file."""
+    return {field: metadata[field] for field in PROVENANCE_FIELDS}
 
 
 def _now() -> str:

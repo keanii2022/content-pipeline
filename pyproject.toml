@@ -17,6 +17,11 @@ youtube = [
     "google-auth-httplib2>=0.2.0",
     "google-auth-oauthlib>=1.2.0",
 ]
+# Only needed for clip mode (pipeline.clip.transcribe) — local Whisper,
+# nothing leaves the machine. `pip install -e ".[clip]"`
+clip = [
+    "faster-whisper>=1.0",
+]
 # `pip install -e .[test]` — runs offline; the suite mocks every network call.
 test = [
     "pytest>=8",
