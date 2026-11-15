@@ -218,6 +218,42 @@ def transcribe(
     return work_dir
 
 
+def load_transcript(source_id: str) -> tuple[Path, dict[str, Any]]:
+    """Return (work/clip-<source_id>/, its transcript) for a later step.
+
+    Refuses a transcript whose provenance block no longer matches the
+    source's metadata.json, so a later step can't build on a transcript
+    that says something different about where the video came from.
+    """
+    try:
+        _, metadata = load_source(source_id)
+    except IntakeError as exc:
+        raise TranscribeError(str(exc)) from exc
+
+    work_dir = WORK_DIR / f"clip-{source_id}"
+    transcript_path = work_dir / "transcript.json"
+    if not transcript_path.is_file():
+        raise TranscribeError(f"no transcript for '{source_id}' — run transcribe first")
+    try:
+        transcript = json.loads(transcript_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise TranscribeError(f"{transcript_path} is not valid JSON") from exc
+    if not isinstance(transcript, dict) or transcript.get("source_id") != source_id:
+        raise TranscribeError(f"{transcript_path} does not describe source '{source_id}'")
+    if transcript.get("source") != provenance(metadata):
+        raise TranscribeError(
+            f"{transcript_path} records different provenance from the source's "
+            "metadata.json — transcribe it again"
+        )
+
+    duration = transcript.get("duration_seconds")
+    if isinstance(duration, bool) or not isinstance(duration, (int, float)) or duration <= 0:
+        raise TranscribeError(f"{transcript_path} has no usable 'duration_seconds'")
+    if not isinstance(transcript.get("segments"), list) or not transcript["segments"]:
+        raise TranscribeError(f"{transcript_path} has no segments")
+    return work_dir, transcript
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m pipeline.clip.transcribe",
