@@ -153,7 +153,10 @@ OWN_FILE = {"source_kind": "file", "source_url": None, "original_filename": "min
 
 CONSISTENT_SOURCES = {
     "unverified": {},
-    "allowlist": {"permission_ledger_reference": LEDGER_REFERENCE},
+    "allowlist": {
+        "permission_ledger_reference": LEDGER_REFERENCE,
+        "uploader_url": "https://www.youtube.com/@NASA",
+    },
     "own": OWN_FILE,
 }
 
@@ -202,6 +205,9 @@ def test_source_with_an_unknown_rights_basis_is_refused(folders, bad_basis):
         ({"rights_basis": "allowlist"}, "permission_ledger_reference"),
         ({"rights_basis": "allowlist", "permission_ledger_reference": {}}, "permission_ledger_reference"),
         ({"rights_basis": "allowlist", "permission_ledger_reference": "nasa"}, "permission_ledger_reference"),
+        # 'allowlist' borrowing a ledger entry that is for another channel
+        ({"rights_basis": "allowlist", "permission_ledger_reference": LEDGER_REFERENCE},
+         "different channel"),
         # 'allowlist' on a local file, which carries no channel to match
         ({**OWN_FILE, "rights_basis": "allowlist", "permission_ledger_reference": LEDGER_REFERENCE},
          "permission_ledger_reference"),

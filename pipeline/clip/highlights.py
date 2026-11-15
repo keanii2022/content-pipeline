@@ -355,6 +355,72 @@ def record_highlights(source_id: str, json_path: Path | str) -> Path:
     return out_path
 
 
+def load_highlights(source_id: str) -> tuple[Path, dict[str, Any]]:
+    """Return (work dir, recorded highlights) for a source, ready to cut.
+
+    highlights.json sits on disk between recording and cutting, so it is
+    checked again here: a file whose provenance no longer matches the
+    source, or whose times were edited to something record_highlights
+    would have refused, is rejected rather than cut.
+    """
+    work_dir, transcript = _load(source_id)
+    path = work_dir / "highlights.json"
+    if not path.is_file():
+        raise HighlightsError(
+            f"no highlights recorded for '{source_id}' — run "
+            f"`python -m pipeline.clip.highlights prompt {source_id}` first"
+        )
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise HighlightsError(f"{path} is not valid JSON: {exc}") from exc
+    if not isinstance(record, dict) or record.get("source_id") != source_id:
+        raise HighlightsError(f"{path} does not describe source '{source_id}'")
+    if record.get("source") != transcript["source"]:
+        raise HighlightsError(
+            f"{path} records different provenance than the source's own "
+            "metadata — record the highlights again"
+        )
+
+    duration = float(transcript["duration_seconds"])
+    items = record.get("highlights")
+    if not isinstance(items, list) or not items:
+        raise HighlightsError(f"{path} has no highlights")
+
+    problems: list[str] = []
+    ranks: list[Any] = []
+    for index, item in enumerate(items):
+        label = f"highlights[{index}]"
+        if not isinstance(item, dict):
+            problems.append(f"{label} must be an object")
+            continue
+        rank = item.get("rank")
+        if isinstance(rank, bool) or not isinstance(rank, int) or rank < 1:
+            problems.append(f"{label}.rank must be a whole number from 1")
+            continue
+        ranks.append(rank)
+        picked = {field: item[field] for field in _HIGHLIGHT_FIELDS if field in item}
+        field_problems = _check_fields(picked, label)
+        if field_problems:
+            problems.extend(field_problems)
+            continue
+        length = round(item["end"] - item["start"], 3)
+        if not 0 <= item["start"] < item["end"] <= duration:
+            problems.append(f"{label} is not inside the source (0-{duration:g} seconds)")
+        elif not MIN_CLIP_SECONDS <= length <= MAX_CLIP_SECONDS:
+            problems.append(
+                f"{label} runs {length:g} seconds; must be "
+                f"{MIN_CLIP_SECONDS}-{MAX_CLIP_SECONDS}"
+            )
+        elif item.get("duration_seconds") != length:
+            problems.append(f"{label}.duration_seconds does not match its start and end")
+    if len(set(ranks)) != len(ranks):
+        problems.append("two highlights share a rank")
+    if problems:
+        raise HighlightsError(f"{path} is not usable:\n  - " + "\n  - ".join(problems))
+    return work_dir, record
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m pipeline.clip.highlights",

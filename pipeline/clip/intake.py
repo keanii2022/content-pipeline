@@ -324,6 +324,19 @@ def load_source(source_id: str) -> tuple[Path, dict[str, Any]]:
                 f"{metadata_path} has rights_basis 'allowlist' with no "
                 "permission_ledger_reference behind it"
             )
+        # The reference must be for this video's own channel, the same
+        # match intake made — not just any creator who is on the ledger.
+        permitted_channel = _comparable_channel_url(reference.get("source_url"))
+        recorded_channels = {
+            _comparable_channel_url(metadata["uploader_url"]),
+            _comparable_channel_url(metadata["channel_url"]),
+        } - {None}
+        if permitted_channel is None or permitted_channel not in recorded_channels:
+            raise IntakeError(
+                f"{metadata_path} has rights_basis 'allowlist', but its "
+                "permission_ledger_reference is for a different channel than "
+                "the one this video came from"
+            )
 
     source_file = metadata.get("source_file")
     if (
