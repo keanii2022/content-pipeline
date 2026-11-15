@@ -110,6 +110,31 @@ Each one prints the exact next command:
 YouTube publishing needs your own Google Cloud OAuth client saved as
 `credentials.json` and `.venv/bin/pip install -e ".[youtube]"`.
 
+### Clip mode
+
+Clip mode takes one long video (a URL or a file on my machine),
+transcribes it, has a `highlight-finder` agent pick the best moments, and
+cuts each one into a 9:16 clip with the original audio. Transcription
+runs locally with Whisper: `.venv/bin/pip install -e ".[clip]"`.
+
+```bash
+.venv/bin/python -m pipeline.orchestrate.run_clip intake <url>
+.venv/bin/python -m pipeline.orchestrate.run_clip intake-file <path> --own    # --own only for footage that's mine
+.venv/bin/python -m pipeline.orchestrate.run_clip transcribe <source_id>
+.venv/bin/python -m pipeline.orchestrate.run_clip find-highlights <source_id>
+# run the highlight-finder agent on the prompt it prints, save its JSON list, then:
+.venv/bin/python -m pipeline.orchestrate.run_clip record-highlights <source_id> <picks.json>
+.venv/bin/python -m pipeline.orchestrate.run_clip cut <source_id> --only 1,3   # leave off --only to cut them all
+.venv/bin/python -m pipeline.orchestrate.run_clip status <source_id>           # where a source stands and what's next
+```
+
+Clip mode accepts any video, so the allowlist isn't a gate here. Instead
+every source records where it came from and a `rights_basis`: `allowlist`
+(the channel is on the allowlist), `own` (my footage), or `unverified`
+(nobody has checked that it can be reused). That label is copied into
+every clip cut from it. Clip mode stops at staged clips in the dashboard;
+they can't be published from this repo yet.
+
 ## How I build it with Claude Code
 
 `CLAUDE.md` holds the project's ground rules for Claude Code. It

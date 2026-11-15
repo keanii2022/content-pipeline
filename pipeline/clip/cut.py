@@ -111,10 +111,10 @@ def _select(highlights: list[dict[str, Any]], indices: Optional[Sequence[int]]) 
     return [by_rank[rank] for rank in sorted(indices)]
 
 
-def _already_cut(source_id: str) -> dict[tuple[Any, Any], str]:
-    """Map (start, end) -> job_id for every clip already staged from this source."""
+def staged_clips(source_id: str) -> list[tuple[str, dict[str, Any]]]:
+    """(job_id, manifest) for every clip already staged from this source, oldest first."""
     staged = _staged_dir()
-    found: dict[tuple[Any, Any], str] = {}
+    found: list[tuple[str, dict[str, Any]]] = []
     if not staged.is_dir():
         return found
     for manifest_path in sorted(staged.glob("*/manifest.json")):
@@ -126,10 +126,17 @@ def _already_cut(source_id: str) -> dict[tuple[Any, Any], str]:
             continue
         if manifest.get("mode") != MODE or manifest.get("source_id") != source_id:
             continue
-        highlight = manifest.get("highlight")
-        if isinstance(highlight, dict):
-            found[(highlight.get("start"), highlight.get("end"))] = manifest_path.parent.name
+        if isinstance(manifest.get("highlight"), dict):
+            found.append((manifest_path.parent.name, manifest))
     return found
+
+
+def _already_cut(source_id: str) -> dict[tuple[Any, Any], str]:
+    """Map (start, end) -> job_id for every clip already staged from this source."""
+    return {
+        (manifest["highlight"].get("start"), manifest["highlight"].get("end")): job_id
+        for job_id, manifest in staged_clips(source_id)
+    }
 
 
 def _run_ffmpeg(
