@@ -24,21 +24,18 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from pipeline.clip import transcribe as transcribe_stage
 from pipeline.clip.cut import (
     DEFAULT_PROFILE,
     OUTPUT_FILE,
     CutError,
     _highlight_numbers,
     cut_highlights,
-    staged_clips,
 )
 from pipeline.clip.highlights import (
     AGENT_NAME,
     HighlightsError,
     _clock,
     build_prompt,
-    load_highlights,
     record_highlights,
 )
 from pipeline.clip.intake import (
@@ -46,9 +43,9 @@ from pipeline.clip.intake import (
     IntakeError,
     intake_file,
     intake_url,
-    load_source,
 )
-from pipeline.clip.transcribe import MODEL_SIZES, TranscribeError, load_transcript, transcribe
+from pipeline.clip.status import describe_source
+from pipeline.clip.transcribe import MODEL_SIZES, TranscribeError, transcribe
 from pipeline.format.profiles import PROFILES
 
 _UNVERIFIED_NOTE = (
@@ -181,72 +178,56 @@ def _cmd_cut(args: argparse.Namespace) -> None:
 
 
 def _cmd_status(args: argparse.Namespace) -> None:
-    source_id = args.source_id
-    _, metadata = load_source(source_id)
-    origin = metadata["source_url"] or metadata["original_filename"]
-    duration = metadata.get("duration_seconds")
+    source = describe_source(args.source_id)
+    source_id = source["source_id"]
+    duration = source["duration_seconds"]
     print(f"Source '{source_id}'")
-    print(f"  title:        {metadata['title']}")
-    print(f"  from:         {origin}")
+    print(f"  title:        {source['title']}")
+    print(f"  from:         {source['origin']}")
     if isinstance(duration, (int, float)) and not isinstance(duration, bool):
         print(f"  duration:     {duration / 60:.1f} min")
-    print(f"  rights_basis: {metadata['rights_basis']}")
+    print(f"  rights_basis: {source['rights_basis']}")
     print("\n  [x] taken in")
 
-    work_dir = transcribe_stage.WORK_DIR / f"clip-{source_id}"
-    if not (work_dir / "transcript.json").is_file():
+    if not source["transcribed"]:
         print("  [ ] transcribed")
-        print("\nNext:\n" + _command("transcribe", source_id))
-        return
-    _, transcript = load_transcript(source_id)
-    print(f"  [x] transcribed ({transcript.get('language')}, {len(transcript['segments'])} segments)")
-
-    if not (work_dir / "highlights.json").is_file():
-        print("  [ ] highlights recorded")
-        print("\nNext:\n" + _command("find-highlights", source_id))
-        return
-    _, record = load_highlights(source_id)
-    highlights = sorted(record["highlights"], key=lambda highlight: highlight["rank"])
-    print(f"  [x] highlights recorded ({len(highlights)})")
-
-    clips = staged_clips(source_id)
-    by_span = {
-        (manifest["highlight"].get("start"), manifest["highlight"].get("end")): (job_id, manifest)
-        for job_id, manifest in clips
-    }
-    cut = [h for h in highlights if (h["start"], h["end"]) in by_span]
-    mark = "x" if len(cut) == len(highlights) else " "
-    print(f"  [{mark}] clips cut ({len(cut)} of {len(highlights)})\n")
-
-    for highlight in highlights:
-        print(
-            f"  #{highlight['rank']:<2} score {highlight['score']:<3} {_span(highlight)}  "
-            f"{highlight['hook_title']}"
-        )
-        staged = by_span.get((highlight["start"], highlight["end"]))
-        if staged is None:
-            print("      not cut yet")
+    else:
+        print(f"  [x] transcribed ({source['language']}, {source['segments']} segments)")
+        if not source["highlights_recorded"]:
+            print("  [ ] highlights recorded")
         else:
-            job_id, manifest = staged
-            print(f"      staged/{job_id}/{OUTPUT_FILE}  {_format_verdict(manifest.get('format_compliance'))}")
+            highlights = source["highlights"]
+            print(f"  [x] highlights recorded ({len(highlights)})")
+            mark = "x" if source["clips_cut"] == len(highlights) else " "
+            print(f"  [{mark}] clips cut ({source['clips_cut']} of {len(highlights)})\n")
+            for highlight in highlights:
+                print(
+                    f"  #{highlight['rank']:<2} score {highlight['score']:<3} {_span(highlight)}  "
+                    f"{highlight['hook_title']}"
+                )
+                if highlight["job_id"] is None:
+                    print("      not cut yet")
+                else:
+                    print(
+                        f"      staged/{highlight['job_id']}/{OUTPUT_FILE}  "
+                        f"{_format_verdict(highlight['format_compliance'])}"
+                    )
 
-    current_spans = {(h["start"], h["end"]) for h in highlights}
-    older = sum(
-        (manifest["highlight"].get("start"), manifest["highlight"].get("end")) not in current_spans
-        for _, manifest in clips
-    )
-    if older:
-        print(f"\n  {older} more staged clip(s) from this source came from earlier highlight picks.")
-    if metadata["rights_basis"] == RIGHTS_UNVERIFIED:
+    if source["other_staged_clips"]:
+        print(
+            f"\n  {source['other_staged_clips']} more staged clip(s) from this source "
+            "came from earlier highlight picks."
+        )
+    if source["rights_basis"] == RIGHTS_UNVERIFIED:
         print(f"\n{_UNVERIFIED_NOTE}")
 
-    if len(cut) < len(highlights):
-        print("\nNext:\n" + _command("cut", source_id))
-    else:
+    if source["next"] is None:
         print(
             "\nNothing left to run. The clips are in the control panel's "
             "finished list for you to review; nothing is published."
         )
+    else:
+        print("\nNext:\n" + _command(source["next"], source_id))
 
 
 def build_parser() -> argparse.ArgumentParser:

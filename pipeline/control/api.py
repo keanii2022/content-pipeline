@@ -23,7 +23,10 @@ import sys
 from typing import Any, Callable
 
 from pipeline.assemble.assemble import AssembleError, assemble_clip
+from pipeline.clip.cut import DEFAULT_PROFILE, CutError, cut_highlights
+from pipeline.clip.status import STAGE_ERRORS, describe_source, list_sources
 from pipeline.fetch.fetch_clip import FetchError, fetch_clip
+from pipeline.format.profiles import PROFILES
 from pipeline.format.validate import FormatError, validate_format
 from pipeline.orchestrate.auto_finish import auto_finish_job
 from pipeline.publish.youtube import YouTubePublishError, upload_video
@@ -37,6 +40,8 @@ _KNOWN_ERRORS = (
     AssembleError,
     FormatError,
     YouTubePublishError,
+    CutError,
+    *STAGE_ERRORS,
 )
 
 
@@ -120,6 +125,31 @@ def _publish_youtube(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _clip_sources(args: dict[str, Any]) -> dict[str, Any]:
+    """Read-only: every clip-mode source and how far it has got."""
+    return {"sources": list_sources()}
+
+
+def _clip_source(args: dict[str, Any]) -> dict[str, Any]:
+    """Read-only: one clip-mode source, plus the profiles a cut can be checked against."""
+    return {
+        "source": describe_source(args["source_id"]),
+        "profiles": sorted(PROFILES),
+        "default_profile": DEFAULT_PROFILE,
+    }
+
+
+def _clip_cut(args: dict[str, Any]) -> dict[str, Any]:
+    """Cut recorded highlights into staged clips — all not yet cut, or the
+    numbers in `indices`. Stops at staged/: nothing here publishes, and the
+    tool paths are not taken from the caller."""
+    return cut_highlights(
+        args["source_id"],
+        args.get("indices"),
+        args.get("profile", DEFAULT_PROFILE),
+    )
+
+
 _ACTIONS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "select-candidate": _select_candidate,
     "fetch": _fetch,
@@ -128,6 +158,9 @@ _ACTIONS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "check-format": _check_format,
     "auto-finish": _auto_finish,
     "publish-youtube": _publish_youtube,
+    "clip-sources": _clip_sources,
+    "clip-source": _clip_source,
+    "clip-cut": _clip_cut,
 }
 
 

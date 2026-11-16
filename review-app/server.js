@@ -28,6 +28,14 @@
 // script drafting, and the human script-approval checkpoint are NOT
 // exposed here and still require a live Claude Code session; nothing here
 // ever calls a posting/publishing API.
+//
+// Clip mode adds a view of the long videos taken in under raw/clip/: GET
+// /api/clip/sources[/:source_id] asks pipeline.control.api how far each
+// source has got (the same description `run_clip status` prints), GET
+// /media/clip-source/:source_id streams the source video so a highlight
+// can be previewed before it is cut, and the `clip-cut` action cuts
+// recorded highlights into staged/ jobs. Intake, transcription and
+// highlight finding are not exposed here, and cutting never publishes.
 
 import http from "node:http";
 import fs from "node:fs/promises";
@@ -35,6 +43,7 @@ import { createReadStream } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { pipeline } from "node:stream";
 import yaml from "js-yaml";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,6 +52,7 @@ const STAGED_DIR = path.join(REPO_ROOT, "staged");
 const JOBS_DIR = path.join(REPO_ROOT, "data", "jobs");
 const CANDIDATES_DIR = path.join(REPO_ROOT, "data", "candidates");
 const PERMISSIONS_PATH = path.join(REPO_ROOT, "data", "permissions", "allowlist.yaml");
+const RAW_CLIP_DIR = path.join(REPO_ROOT, "raw", "clip");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const PORT = process.env.PORT ? Number(process.env.PORT) : 4173;
 
@@ -68,7 +78,19 @@ const CONTROL_ACTIONS = new Set([
   // with no recorded permission provenance or a failed/missing
   // format-compliance check.
   "publish-youtube",
+  // Cuts a clip-mode source's recorded highlights into staged jobs. It
+  // stops at staged/: a cut clip is reviewed and published (or not) like
+  // any other job, by a person.
+  "clip-cut",
 ]);
+
+// Mirrors _SOURCE_ID in pipeline/clip/intake.py.
+const CLIP_SOURCE_ID = /^\d{8}T\d{6}Z-[0-9a-f]{6}$/;
+
+// Sources with a cut in progress. Cutting checks what is already staged
+// before it starts, so two cuts of one source at once could both stage
+// the same highlight.
+const sourcesBeingCut = new Set();
 
 const SAFE_PATH_COMPONENT = /^[A-Za-z0-9_.-]+$/;
 
@@ -82,6 +104,8 @@ const VIDEO_CONTENT_TYPES = {
   ".mp4": "video/mp4",
   ".mov": "video/quicktime",
   ".webm": "video/webm",
+  ".m4v": "video/mp4",
+  ".mkv": "video/x-matroska",
 };
 
 function isSafePathComponent(value) {
@@ -278,6 +302,58 @@ function runControlAction(action, args) {
   });
 }
 
+// Streams a video file, honouring a Range header. Without byte ranges a
+// browser can't seek to a part of the file it hasn't downloaded yet —
+// which is the whole point of previewing a highlight in a long source.
+// pipeline, not .pipe(): it closes the file when the browser drops the
+// request (which it does constantly while scrubbing) and turns a read
+// error into a closed response instead of an uncaught exception.
+function sendFileStream(res, stream) {
+  // The browser may have hung up before we got here; pipeline() throws
+  // outright when asked to write into a response that is already closed.
+  if (res.destroyed || res.writableEnded) {
+    stream.destroy();
+    return;
+  }
+  pipeline(stream, res, () => {});
+}
+
+function streamVideo(req, res, filePath, size) {
+  const headers = {
+    "Content-Type": VIDEO_CONTENT_TYPES[path.extname(filePath).toLowerCase()] || "application/octet-stream",
+    "Accept-Ranges": "bytes",
+  };
+  const range = req.headers.range;
+  if (!range) {
+    res.writeHead(200, { ...headers, "Content-Length": size });
+    sendFileStream(res, createReadStream(filePath));
+    return;
+  }
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+  let start;
+  let end;
+  if (match && match[1] !== "") {
+    start = Number(match[1]);
+    end = match[2] === "" ? size - 1 : Math.min(Number(match[2]), size - 1);
+  } else if (match && match[2] !== "") {
+    // "bytes=-500": the last 500 bytes.
+    start = Math.max(size - Number(match[2]), 0);
+    end = size - 1;
+  }
+  if (start === undefined || start > end || start >= size) {
+    res.writeHead(416, { "Content-Range": `bytes */${size}` });
+    res.end();
+    return;
+  }
+  res.writeHead(206, {
+    ...headers,
+    "Content-Range": `bytes ${start}-${end}/${size}`,
+    "Content-Length": end - start + 1,
+  });
+  sendFileStream(res, createReadStream(filePath, { start, end }));
+}
+
 async function serveStaticFile(req, res, pathname) {
   const relative = pathname === "/" ? "index.html" : pathname.slice(1);
   const resolved = path.resolve(PUBLIC_DIR, relative);
@@ -360,6 +436,22 @@ async function handleAction(req, res, action) {
     sendJson(res, 400, { error: "invalid JSON body" });
     return;
   }
+  const cutting = action === "clip-cut" && args ? String(args.source_id) : null;
+  if (cutting !== null) {
+    if (sourcesBeingCut.has(cutting)) {
+      sendJson(res, 409, { error: "a cut is already running for this source — wait for it to finish" });
+      return;
+    }
+    sourcesBeingCut.add(cutting);
+  }
+  try {
+    await respondWithControlAction(res, action, args);
+  } finally {
+    if (cutting !== null) sourcesBeingCut.delete(cutting);
+  }
+}
+
+async function respondWithControlAction(res, action, args, shape = (result) => ({ result })) {
   let outcome;
   try {
     outcome = await runControlAction(action, args);
@@ -368,12 +460,68 @@ async function handleAction(req, res, action) {
     return;
   }
   if (outcome.ok) {
-    sendJson(res, 200, { result: outcome.result });
+    sendJson(res, 200, shape(outcome.result));
   } else {
     // A known pipeline error (bad input, permission check failed, TTS/
     // fetch/ffmpeg failure) — not a server bug, so 422 rather than 500.
     sendJson(res, 422, { error: outcome.error });
   }
+}
+
+async function handleListClipSources(req, res) {
+  await respondWithControlAction(res, "clip-sources", {}, (result) => result);
+}
+
+async function handleGetClipSource(req, res, sourceId) {
+  if (!CLIP_SOURCE_ID.test(sourceId)) {
+    sendJson(res, 400, { error: "invalid source id" });
+    return;
+  }
+  await respondWithControlAction(res, "clip-source", { source_id: sourceId }, (result) => result);
+}
+
+// Serves a clip-mode source video for previewing a highlight. The file
+// name comes from the source's own metadata.json and must be a plain name
+// inside that source's folder, the same rule load_source applies in
+// pipeline/clip/intake.py.
+async function handleGetClipSourceMedia(req, res, sourceId) {
+  if (!CLIP_SOURCE_ID.test(sourceId)) {
+    sendJson(res, 400, { error: "invalid source id" });
+    return;
+  }
+  const sourceDir = path.join(RAW_CLIP_DIR, sourceId);
+  let sourceFile;
+  try {
+    const metadata = JSON.parse(await fs.readFile(path.join(sourceDir, "metadata.json"), "utf8"));
+    sourceFile = metadata && metadata.source_file;
+  } catch (err) {
+    sendJson(res, 404, { error: "source not found" });
+    return;
+  }
+  if (
+    typeof sourceFile !== "string" ||
+    sourceFile === "" ||
+    sourceFile === "." ||
+    sourceFile === ".." ||
+    path.basename(sourceFile) !== sourceFile ||
+    sourceFile.includes("\\")
+  ) {
+    sendJson(res, 404, { error: "source video not recorded" });
+    return;
+  }
+  const filePath = path.join(sourceDir, sourceFile);
+  let stat;
+  try {
+    stat = await fs.stat(filePath);
+  } catch (err) {
+    sendJson(res, 404, { error: "source video not found" });
+    return;
+  }
+  if (!stat.isFile()) {
+    sendJson(res, 404, { error: "source video not found" });
+    return;
+  }
+  streamVideo(req, res, filePath, stat.size);
 }
 
 async function handleGetMedia(req, res, jobId) {
@@ -400,12 +548,11 @@ async function handleGetMedia(req, res, jobId) {
     sendJson(res, 404, { error: "staged output not found" });
     return;
   }
-  const ext = path.extname(outputPath);
-  res.writeHead(200, {
-    "Content-Type": VIDEO_CONTENT_TYPES[ext] || "application/octet-stream",
-    "Content-Length": stat.size,
-  });
-  createReadStream(outputPath).pipe(res);
+  if (!stat.isFile()) {
+    sendJson(res, 404, { error: "staged output not found" });
+    return;
+  }
+  streamVideo(req, res, outputPath, stat.size);
 }
 
 async function readJsonBody(req) {
@@ -507,6 +654,23 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && pathname === "/api/clip/sources") {
+      await handleListClipSources(req, res);
+      return;
+    }
+
+    const clipSourceMatch = pathname.match(/^\/api\/clip\/sources\/([^/]+)$/);
+    if (req.method === "GET" && clipSourceMatch) {
+      await handleGetClipSource(req, res, decodeURIComponent(clipSourceMatch[1]));
+      return;
+    }
+
+    const clipMediaMatch = pathname.match(/^\/media\/clip-source\/([^/]+)$/);
+    if (req.method === "GET" && clipMediaMatch) {
+      await handleGetClipSourceMedia(req, res, decodeURIComponent(clipMediaMatch[1]));
+      return;
+    }
+
     const mediaMatch = pathname.match(/^\/media\/([^/]+)$/);
     if (req.method === "GET" && mediaMatch) {
       await handleGetMedia(req, res, decodeURIComponent(mediaMatch[1]));
@@ -520,10 +684,20 @@ const server = http.createServer(async (req, res) => {
 
     sendJson(res, 404, { error: "not found" });
   } catch (err) {
+    console.error(`${req.method} ${req.url} failed:`, err);
+    // Once a response has started (a video mid-stream), there is no clean
+    // way to turn it into an error reply — and trying would throw from
+    // inside this handler and take the whole server down.
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
     sendJson(res, 500, { error: String(err && err.message ? err.message : err) });
   }
 });
 
-server.listen(PORT, () => {
+// This machine only: the action endpoints run pipeline stages and must not
+// be reachable from other devices on the network.
+server.listen(PORT, "127.0.0.1", () => {
   console.log(`content-pipeline review dashboard listening on http://localhost:${PORT}`);
 });

@@ -126,7 +126,12 @@ def staged_clips(source_id: str) -> list[tuple[str, dict[str, Any]]]:
             continue
         if manifest.get("mode") != MODE or manifest.get("source_id") != source_id:
             continue
-        if isinstance(manifest.get("highlight"), dict):
+        highlight = manifest.get("highlight")
+        # Only a clip with real start/end times can be matched to a highlight.
+        if isinstance(highlight, dict) and all(
+            isinstance(highlight.get(key), (int, float)) and not isinstance(highlight.get(key), bool)
+            for key in ("start", "end")
+        ):
             found.append((manifest_path.parent.name, manifest))
     return found
 
