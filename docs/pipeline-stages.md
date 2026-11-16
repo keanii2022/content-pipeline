@@ -21,6 +21,22 @@ anything is ready for a human to post it anywhere:
   script, format-compliance result once Step 9 lands), under
   `staged/<job_id>/`. This is the last stage inside the pipeline.
 
+Clip mode (Steps 16–22) uses the same three stages for a different job:
+cutting short clips out of one long video, with the original audio.
+
+- **`raw/clip/<source_id>/`** — the source video and a `metadata.json`
+  recording where it came from and its `rights_basis`: `allowlist` (the
+  channel is on the allowlist), `own` (the owner's own footage) or
+  `unverified` (reuse rights have not been checked). Clip mode takes any
+  URL or local file, so the allowlist is not a gate here; the recorded
+  provenance is what later stages rely on.
+- **`work/clip-<source_id>/`** — the transcript and the recorded
+  highlights, each carrying the source's provenance block unchanged.
+- **`staged/<job_id>/`** — one cut clip per highlight, in the same
+  finished list as commentary jobs. Its `manifest.json` has `mode: "clip"`,
+  the highlight it was cut from, the format-compliance result, and the
+  provenance block under `source`.
+
 ## The boundary rule
 
 **Nothing in this repo reads from `staged/` in order to post content
@@ -46,9 +62,26 @@ publishing:
   subcommand or the control panel's "Publish to YouTube" button) and to
   supply the title. Nothing chains it onto `auto-finish` or any other
   stage automatically.
-- It refuses to run against a job with no recorded
-  `permission_ledger_reference` or a format-compliance check that's
-  missing or failed — see `pipeline.publish.youtube._check_eligibility`.
+- It refuses to run against a job with no recorded provenance or a
+  format-compliance check that's missing or failed — see
+  `pipeline.publish.youtube._check_eligibility`. What counts as
+  provenance depends on the mode:
+  - Commentary jobs need a recorded `permission_ledger_reference`.
+  - Clip-mode jobs need their `source` provenance block, complete and
+    still matching the source record in `raw/clip/<source_id>/`. If that
+    record has been deleted, only an `unverified` clip can still go out
+    (it claims nothing that needs backing); `allowlist` and `own` are
+    refused. Then the `rights_basis` decides: `allowlist` is checked against the ledger
+    again at publish time, `own` goes through, and `unverified` is
+    refused unless the person publishing acknowledges it in that same
+    action — the "I've confirmed I have the right to post this clip"
+    checkbox in the control panel (unticked every time), or
+    `--acknowledge-unverified-rights` on the `publish` command. The
+    acknowledgment and its timestamp are written to the manifest before
+    the upload starts. A recorded acknowledgment is a record of one
+    upload; it is never read back as permission for the next.
+- Cutting never leads to an upload. Clip mode ends at `staged/` exactly
+  as commentary mode does.
 
 If a future change needs to touch this boundary further (another
 platform's API, or auto-triggering an upload), that is a scope change to

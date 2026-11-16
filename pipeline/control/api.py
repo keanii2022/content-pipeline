@@ -114,7 +114,8 @@ def _publish_youtube(args: dict[str, Any]) -> dict[str, Any]:
     """The one deliberate, human-triggered exception to this repo's
     "never call a posting/publishing API" rule — see pipeline.publish.youtube
     for the eligibility checks (permission provenance + passed
-    format-compliance) this refuses to skip."""
+    format-compliance) this refuses to skip. The acknowledgment for an
+    `unverified` clip only counts as a literal JSON true from this call."""
     return upload_video(
         args["job_id"],
         title=args["title"],
@@ -122,6 +123,7 @@ def _publish_youtube(args: dict[str, Any]) -> dict[str, Any]:
         tags=args.get("tags"),
         category_id=args.get("category_id", "22"),
         privacy_status=args.get("privacy_status", "private"),
+        acknowledge_unverified_rights=args.get("acknowledge_unverified_rights") is True,
     )
 
 

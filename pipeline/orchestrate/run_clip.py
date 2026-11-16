@@ -12,7 +12,9 @@ Python process can't start. `find-highlights` prints that agent's prompt
 and `record-highlights` takes its answer back in.
 
 The chain ends at `cut`, with clips in staged/ for a person to review.
-There is no publish subcommand here and nothing in this file uploads.
+There is no publish subcommand here and nothing in this file uploads:
+posting a staged clip is `run_single publish` (or the control panel's
+button), a separate step a person takes per clip. This file only says so.
 """
 
 from __future__ import annotations
@@ -67,6 +69,23 @@ def _python() -> str:
 def _command(*parts: str) -> str:
     words = " ".join(part if part.startswith("<") else shlex.quote(part) for part in parts)
     return f"  {_python()} -m pipeline.orchestrate.run_clip {words}"
+
+
+def _publish_note(rights_basis: Any) -> str:
+    """How a staged clip gets posted — by the person, never by this command."""
+    note = (
+        "Posting a clip is a separate step you take yourself, one clip at a "
+        "time: the control panel's Publish button, or\n"
+        f'  {_python()} -m pipeline.orchestrate.run_single publish <job_id> "<title>"'
+    )
+    if rights_basis == RIGHTS_UNVERIFIED:
+        note += (
+            "\nThis source is 'unverified', so that upload is refused unless "
+            "you tick the rights box in the control panel or add "
+            "--acknowledge-unverified-rights — only once you've confirmed you "
+            "have the right to post the clip."
+        )
+    return note
 
 
 def _span(highlight: dict[str, Any]) -> str:
@@ -173,7 +192,9 @@ def _cmd_cut(args: argparse.Namespace) -> None:
     print(
         "\nClip mode stops here. Nothing is published: the clips are in the "
         "control panel's finished list for you to review.\n"
-        "To see where this source stands at any time:\n" + _command("status", args.source_id)
+        + _publish_note(result["rights_basis"])
+        + "\nTo see where this source stands at any time:\n"
+        + _command("status", args.source_id)
     )
 
 
@@ -224,7 +245,8 @@ def _cmd_status(args: argparse.Namespace) -> None:
     if source["next"] is None:
         print(
             "\nNothing left to run. The clips are in the control panel's "
-            "finished list for you to review; nothing is published."
+            "finished list for you to review; nothing is published.\n"
+            + _publish_note(source["rights_basis"])
         )
     else:
         print("\nNext:\n" + _command(source["next"], source_id))

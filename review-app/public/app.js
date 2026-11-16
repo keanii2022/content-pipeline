@@ -280,34 +280,66 @@ function renderReviewNote(manifest) {
   return `<p class="review-note">Marked ${review.approved ? "approved" : "rejected"} at ${escapeHtml(review.reviewed_at)}</p>`;
 }
 
+// This mirrors pipeline.publish.youtube._check_eligibility so the form
+// only opens for a job that could go through; the Python side is what
+// actually decides, and refuses on its own whatever this page sends.
+function publishBlocker(manifest) {
+  const fc = manifest.format_compliance;
+  const formatPassed = Boolean(fc) && fc.passed === true;
+  if (isClipJob(manifest)) {
+    const rightsBasis = (manifest.source || {}).rights_basis;
+    if (!RIGHTS_BASES.includes(rightsBasis)) {
+      return "Not eligible — this clip has no usable rights_basis recorded, so it can't be published.";
+    }
+    return formatPassed ? null : "Not eligible yet — needs a passed format-compliance check.";
+  }
+  return manifest.permission_ledger_reference && formatPassed
+    ? null
+    : "Not eligible yet — needs a recorded permission ledger reference and a passed format-compliance check.";
+}
+
+// The rights box starts unticked on every render, including after an
+// upload: an acknowledgment is for one upload, never remembered.
+function renderRightsAcknowledgment(manifest) {
+  const previous = manifest.unverified_rights_acknowledgment;
+  return `
+    <label class="ack">
+      <input id="yt-ack-rights" type="checkbox" />
+      <span>I've confirmed I have the right to post this clip</span>
+    </label>
+    <p class="review-note rights-warning">This clip's source is unverified. Publish stays locked until you tick the box, and ticking it is recorded with the time.</p>
+    ${
+      previous && previous.acknowledged_at
+        ? `<p class="review-note muted">You confirmed this for an earlier upload at ${escapeHtml(previous.acknowledged_at)}. Each upload asks again.</p>`
+        : ""
+    }
+  `;
+}
+
 // The title box deliberately starts empty: every upload needs a title a
 // person typed for this video (see CLAUDE.md). Pre-filling it from the
 // script once let the wrong job go out under its old title untouched.
 function renderPublishSection(manifest, status) {
-  const fc = manifest.format_compliance;
-  const eligible = Boolean(manifest.permission_ledger_reference) && fc && fc.passed === true;
+  const blocker = publishBlocker(manifest);
+  const eligible = blocker === null;
+  const needsAck = eligible && isClipJob(manifest) && (manifest.source || {}).rights_basis === "unverified";
   const statusHtml = status
     ? `<p class="review-note ${status.error ? "action-error" : "action-ok"}">${escapeHtml(status.text)}</p>`
     : "";
   return `
     <div class="section">
       <h3>Publish to YouTube</h3>
-      ${
-        eligible
-          ? ""
-          : isClipJob(manifest)
-            ? `<p class="review-note action-error">Clip-mode jobs can't be published from here yet.</p>`
-            : `<p class="review-note action-error">Not eligible yet — needs a recorded permission ledger reference and a passed format-compliance check.</p>`
-      }
+      ${eligible ? "" : `<p class="review-note action-error">${escapeHtml(blocker)}</p>`}
       <input id="yt-title" type="text" placeholder="Title" value="" ${eligible ? "" : "disabled"} />
       <textarea id="yt-description" placeholder="Description (optional)" ${eligible ? "" : "disabled"}></textarea>
+      ${needsAck ? renderRightsAcknowledgment(manifest) : ""}
       <div class="actions">
         <select id="yt-privacy" ${eligible ? "" : "disabled"}>
           <option value="private">private</option>
           <option value="unlisted">unlisted</option>
           <option value="public">public</option>
         </select>
-        <button id="yt-publish" ${eligible ? "" : "disabled"}>Publish</button>
+        <button id="yt-publish" ${eligible && !needsAck ? "" : "disabled"}>Publish</button>
       </div>
       ${statusHtml}
     </div>
@@ -362,14 +394,27 @@ function renderDetail(manifest, status) {
   }
   const publishBtn = document.getElementById("yt-publish");
   if (publishBtn) publishBtn.addEventListener("click", () => publishToYouTube(manifest.job_id));
+  const ackBox = document.getElementById("yt-ack-rights");
+  if (ackBox && publishBtn) {
+    ackBox.addEventListener("change", () => {
+      publishBtn.disabled = !ackBox.checked;
+    });
+  }
 }
 
 async function publishToYouTube(jobId) {
   const title = document.getElementById("yt-title").value;
   const description = document.getElementById("yt-description").value;
   const privacy_status = document.getElementById("yt-privacy").value;
+  const args = { job_id: jobId, title, description, privacy_status };
+  // Sent only when the box is on the page and ticked right now.
+  const ackBox = document.getElementById("yt-ack-rights");
+  if (ackBox && ackBox.checked) args.acknowledge_unverified_rights = true;
+  // One click, one upload: the form is rebuilt when the answer comes back.
+  document.getElementById("yt-publish").disabled = true;
+  if (ackBox) ackBox.disabled = true;
   try {
-    const result = await runAction("publish-youtube", { job_id: jobId, title, description, privacy_status });
+    const result = await runAction("publish-youtube", args);
     const data = await fetchJson(`/api/jobs/${encodeURIComponent(jobId)}`);
     renderDetail(data.manifest, { text: `Published: ${result.url}` });
   } catch (err) {
@@ -703,8 +748,12 @@ async function doCheckFormat() {
 
 const RIGHTS_BASES = ["allowlist", "own", "unverified"];
 
+// Same list as CLIP_JOB_KEYS in pipeline/publish/youtube.py: any trace of
+// clip mode puts a job under the clip-mode publish rules.
+const CLIP_JOB_KEYS = ["mode", "source", "source_id", "highlight"];
+
 function isClipJob(manifest) {
-  return manifest.mode === "clip";
+  return CLIP_JOB_KEYS.some((key) => key in manifest);
 }
 
 // A basis that is missing or not one of the three known values is shown

@@ -165,6 +165,7 @@ def _cmd_publish(args: argparse.Namespace) -> None:
         tags=args.tags.split(",") if args.tags else None,
         category_id=args.category_id,
         privacy_status=args.privacy,
+        acknowledge_unverified_rights=args.acknowledge_unverified_rights,
     )
     print(f"Published job '{args.job_id}' to YouTube: {result['url']}")
 
@@ -275,6 +276,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_publish.add_argument("--category-id", default="22")
     p_publish.add_argument(
         "--privacy", default="private", choices=["private", "unlisted", "public"]
+    )
+    p_publish.add_argument(
+        "--acknowledge-unverified-rights",
+        action="store_true",
+        help="Only for a clip-mode job whose source rights are 'unverified': "
+        "says you've confirmed you have the right to post this clip. "
+        "Needed on every such upload; recorded in the job's manifest.",
     )
     p_publish.set_defaults(func=_cmd_publish)
 

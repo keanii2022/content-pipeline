@@ -273,71 +273,94 @@ def _write_metadata(source_dir: Path, metadata: dict[str, Any]) -> None:
         f.write("\n")
 
 
-def load_source(source_id: str) -> tuple[Path, dict[str, Any]]:
-    """Return (path to the source video, its metadata) for a finished intake.
+class SourceNotFoundError(IntakeError):
+    """No source record on disk under that id (as opposed to a broken one)."""
 
-    Refuses a source whose provenance is incomplete rather than letting a
-    later step fill the gap with a guess.
+
+def check_provenance(record: dict[str, Any], where: Any) -> None:
+    """Refuse a provenance record that is incomplete or contradicts itself.
+
+    The same rules apply to a source's metadata.json and to the copy of it
+    in a staged clip's manifest, so both go through here. `where` names
+    the record in the error message.
     """
-    if not isinstance(source_id, str) or not _SOURCE_ID.match(source_id):
-        raise IntakeError(f"source_id '{source_id}' must look like 20261113T101500Z-a1b2c3")
-    source_dir = RAW_CLIP_DIR / source_id
-    metadata_path = source_dir / "metadata.json"
-    if not metadata_path.is_file():
-        raise IntakeError(f"no clip-mode source '{source_id}' — run intake first")
-    try:
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise IntakeError(f"{metadata_path} is not valid JSON") from exc
-    if not isinstance(metadata, dict) or metadata.get("source_id") != source_id:
-        raise IntakeError(f"{metadata_path} does not describe source '{source_id}'")
-
-    missing = [field for field in PROVENANCE_FIELDS if field not in metadata]
+    missing = [field for field in PROVENANCE_FIELDS if field not in record]
     if missing:
-        raise IntakeError(f"{metadata_path} is missing provenance field(s): {missing}")
-    rights_basis = metadata["rights_basis"]
+        raise IntakeError(f"{where} is missing provenance field(s): {missing}")
+    rights_basis = record["rights_basis"]
     if rights_basis not in RIGHTS_BASES:
         raise IntakeError(
-            f"{metadata_path} has rights_basis {rights_basis!r}, "
+            f"{where} has rights_basis {rights_basis!r}, "
             f"expected one of {list(RIGHTS_BASES)}"
         )
     # The fields must also agree with each other, the way intake writes
     # them — otherwise an edited file could claim a basis it has no
     # evidence for and every later step would repeat it.
-    source_kind = metadata["source_kind"]
+    source_kind = record["source_kind"]
     if source_kind not in ("url", "file"):
-        raise IntakeError(f"{metadata_path} has source_kind {source_kind!r}")
+        raise IntakeError(f"{where} has source_kind {source_kind!r}")
     origin_field = "source_url" if source_kind == "url" else "original_filename"
-    if not _string_or_none(metadata[origin_field]):
-        raise IntakeError(f"{metadata_path} has no '{origin_field}' — origin unknown")
+    if not _string_or_none(record[origin_field]):
+        raise IntakeError(f"{where} has no '{origin_field}' — origin unknown")
     if rights_basis == RIGHTS_OWN and source_kind != "file":
         raise IntakeError(
-            f"{metadata_path} has rights_basis 'own' on a downloaded source — "
+            f"{where} has rights_basis 'own' on a downloaded source — "
             "only a local file can be marked own"
         )
     if rights_basis == RIGHTS_ALLOWLIST:
-        reference = metadata["permission_ledger_reference"]
+        reference = record["permission_ledger_reference"]
         if source_kind != "url" or not (
             isinstance(reference, dict) and _string_or_none(reference.get("creator_id"))
         ):
             raise IntakeError(
-                f"{metadata_path} has rights_basis 'allowlist' with no "
+                f"{where} has rights_basis 'allowlist' with no "
                 "permission_ledger_reference behind it"
             )
         # The reference must be for this video's own channel, the same
         # match intake made — not just any creator who is on the ledger.
         permitted_channel = _comparable_channel_url(reference.get("source_url"))
         recorded_channels = {
-            _comparable_channel_url(metadata["uploader_url"]),
-            _comparable_channel_url(metadata["channel_url"]),
+            _comparable_channel_url(record["uploader_url"]),
+            _comparable_channel_url(record["channel_url"]),
         } - {None}
         if permitted_channel is None or permitted_channel not in recorded_channels:
             raise IntakeError(
-                f"{metadata_path} has rights_basis 'allowlist', but its "
+                f"{where} has rights_basis 'allowlist', but its "
                 "permission_ledger_reference is for a different channel than "
                 "the one this video came from"
             )
 
+
+def load_source_record(source_id: str) -> tuple[Path, dict[str, Any]]:
+    """Return (the source's folder, its metadata) for a finished intake.
+
+    Checks the record, not the video file: a publish-time check still
+    needs the record after the (large) video has been cleared out.
+    """
+    if not isinstance(source_id, str) or not _SOURCE_ID.match(source_id):
+        raise IntakeError(f"source_id '{source_id}' must look like 20261113T101500Z-a1b2c3")
+    source_dir = RAW_CLIP_DIR / source_id
+    metadata_path = source_dir / "metadata.json"
+    if not metadata_path.is_file():
+        raise SourceNotFoundError(f"no clip-mode source '{source_id}' — run intake first")
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise IntakeError(f"{metadata_path} is not valid JSON") from exc
+    if not isinstance(metadata, dict) or metadata.get("source_id") != source_id:
+        raise IntakeError(f"{metadata_path} does not describe source '{source_id}'")
+    check_provenance(metadata, metadata_path)
+    return source_dir, metadata
+
+
+def load_source(source_id: str) -> tuple[Path, dict[str, Any]]:
+    """Return (path to the source video, its metadata) for a finished intake.
+
+    Refuses a source whose provenance is incomplete rather than letting a
+    later step fill the gap with a guess.
+    """
+    source_dir, metadata = load_source_record(source_id)
+    metadata_path = source_dir / "metadata.json"
     source_file = metadata.get("source_file")
     if (
         not isinstance(source_file, str)

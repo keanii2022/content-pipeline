@@ -132,8 +132,25 @@ Clip mode accepts any video, so the allowlist isn't a gate here. Instead
 every source records where it came from and a `rights_basis`: `allowlist`
 (the channel is on the allowlist), `own` (my footage), or `unverified`
 (nobody has checked that it can be reused). That label is copied into
-every clip cut from it. Clip mode stops at staged clips in the dashboard;
-they can't be published from this repo yet.
+every clip cut from it.
+
+Clip mode stops at staged clips in the dashboard. Posting one is the same
+manual step as in commentary mode, one clip at a time, with a title I
+type: the dashboard's Publish button or `run_single publish`. The gate
+first checks that the clip's recorded provenance is complete and still
+matches its source record, then goes by its `rights_basis`:
+
+- `allowlist` — the allowlist is checked again as it stands that day.
+- `own` — goes through.
+- `unverified` — refused unless I tick "I've confirmed I have the right
+  to post this clip" (or pass `--acknowledge-unverified-rights`) for that
+  upload. The acknowledgment and its time are written into the clip's
+  manifest, and it has to be given again for every upload.
+
+A clip with no recorded provenance, or one that hasn't passed the format
+check, can't be published at all. If a source's `metadata.json` has been
+deleted, its `allowlist` and `own` clips can't be published either, since
+there's nothing left to back the label (the source video itself can go).
 
 ## How I build it with Claude Code
 
