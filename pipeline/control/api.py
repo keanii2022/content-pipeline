@@ -23,6 +23,7 @@ import sys
 from typing import Any, Callable
 
 from pipeline.assemble.assemble import AssembleError, assemble_clip
+from pipeline.clip.caption_styles import DEFAULT_STYLE, style_names
 from pipeline.clip.cut import DEFAULT_PROFILE, CutError, cut_highlights
 from pipeline.clip.status import STAGE_ERRORS, describe_source, list_sources
 from pipeline.fetch.fetch_clip import FetchError, fetch_clip
@@ -133,22 +134,31 @@ def _clip_sources(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def _clip_source(args: dict[str, Any]) -> dict[str, Any]:
-    """Read-only: one clip-mode source, plus the profiles a cut can be checked against."""
+    """Read-only: one clip-mode source, plus the profiles a cut can be
+    checked against and the caption styles it can be cut in."""
     return {
         "source": describe_source(args["source_id"]),
         "profiles": sorted(PROFILES),
         "default_profile": DEFAULT_PROFILE,
+        "caption_styles": style_names(),
+        "default_caption_style": DEFAULT_STYLE,
     }
 
 
 def _clip_cut(args: dict[str, Any]) -> dict[str, Any]:
     """Cut recorded highlights into staged clips — all not yet cut, or the
     numbers in `indices`. Stops at staged/: nothing here publishes, and the
-    tool paths are not taken from the caller."""
+    tool paths are not taken from the caller. Captions are on only for a
+    literal JSON true, so "true" or 1 cut a plain clip."""
+    caption_style = args.get("caption_style", DEFAULT_STYLE)
+    if not isinstance(caption_style, str):
+        raise CutError(f"caption_style must be a style name, got {caption_style!r}")
     return cut_highlights(
         args["source_id"],
         args.get("indices"),
         args.get("profile", DEFAULT_PROFILE),
+        captions=args.get("captions") is True,
+        caption_style=caption_style,
     )
 
 

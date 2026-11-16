@@ -278,6 +278,22 @@ select {
   color: var(--warn);
 }
 
+.badge.captions {
+  background: rgba(124, 108, 230, 0.16);
+  color: #a99cf5;
+}
+
+.clip-cut-entry + .clip-cut-entry {
+  margin-top: 6px;
+}
+
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
 .clip-title {
   margin: 0;
   font-size: 17px;

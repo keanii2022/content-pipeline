@@ -87,7 +87,9 @@ function renderJobList() {
       ${
         isClipJob(manifest)
           ? `<span class="job-status">${escapeHtml(manifest.highlight?.hook_title)}</span>
-             <span class="job-status">clip ${rightsBadge(manifest.source?.rights_basis)}</span>`
+             <span class="job-status">clip ${rightsBadge(manifest.source?.rights_basis)}${
+               manifest.captions ? ` ${captionsBadge(manifest.captions.style)}` : ""
+             }</span>`
           : ""
       }
     `;
@@ -748,6 +750,13 @@ async function doCheckFormat() {
 
 const RIGHTS_BASES = ["allowlist", "own", "unverified"];
 
+// Captions stay off unless asked for; flip this to start the box ticked.
+const CAPTIONS_ON_BY_DEFAULT = false;
+
+// The Cut controls' last choice, so re-rendering after a cut keeps it.
+// Style null means "the default from clip-source".
+let captionChoice = { on: CAPTIONS_ON_BY_DEFAULT, style: null };
+
 // Same list as CLIP_JOB_KEYS in pipeline/publish/youtube.py: any trace of
 // clip mode puts a job under the clip-mode publish rules.
 const CLIP_JOB_KEYS = ["mode", "source", "source_id", "highlight"];
@@ -789,6 +798,10 @@ function factRows(facts) {
     .join("");
 }
 
+function captionsBadge(style) {
+  return `<span class="badge captions">captions · ${escapeHtml(style || "unknown")}</span>`;
+}
+
 function formatBadge(compliance) {
   if (!compliance) return `<span class="badge unknown">format not checked</span>`;
   return compliance.passed === true
@@ -806,6 +819,7 @@ function renderClipJobSections(manifest) {
     <div class="section">
       <h3>Clip</h3>
       <p class="clip-title">${escapeHtml(highlight.hook_title)}</p>
+      ${manifest.captions ? `<p>${captionsBadge(manifest.captions.style)}</p>` : ""}
       <p class="review-note">Highlight #${escapeHtml(highlight.rank)} · score ${escapeHtml(highlight.score)} · ${clock(highlight.start)}–${clock(highlight.end)} of the source · original audio</p>
       <p class="review-note">${escapeHtml(highlight.rationale)}</p>
     </div>
@@ -898,11 +912,35 @@ function renderNextStep(source) {
   return `<p class="review-note">Every highlight is cut. The clips are under Staged Jobs.</p>`;
 }
 
+// The cuts a highlight has staged; older descriptions only carry job_id.
+function cutsOf(highlight) {
+  if (Array.isArray(highlight.cuts)) return highlight.cuts;
+  return highlight.job_id
+    ? [{ job_id: highlight.job_id, captions: null, format_compliance: highlight.format_compliance }]
+    : [];
+}
+
+// A highlight counts as cut for the look currently chosen: plain, or one caption style.
+function hasCutInStyle(highlight, captionStyle) {
+  return cutsOf(highlight).some((cut) => (cut.captions ?? null) === captionStyle);
+}
+
+function renderCutEntry(cut) {
+  return `
+    <div class="clip-cut-entry">
+      <button type="button" class="link clip-open-job" data-job-id="${escapeHtml(cut.job_id)}">open clip</button>
+      ${cut.captions ? captionsBadge(cut.captions) : `<span class="badge unknown">plain</span>`}
+      ${formatBadge(cut.format_compliance)}
+    </div>
+  `;
+}
+
 function renderHighlightRow(highlight) {
   const length = Math.round(highlight.duration_seconds);
+  const cuts = cutsOf(highlight);
   return `
     <tr>
-      <td><input type="checkbox" class="clip-pick" data-rank="${escapeHtml(highlight.rank)}" aria-label="Select highlight #${escapeHtml(highlight.rank)} to cut" ${highlight.job_id ? "disabled" : ""} /></td>
+      <td><input type="checkbox" class="clip-pick" data-rank="${escapeHtml(highlight.rank)}" aria-label="Select highlight #${escapeHtml(highlight.rank)} to cut" /></td>
       <td>#${escapeHtml(highlight.rank)}</td>
       <td>${escapeHtml(highlight.score)}</td>
       <td class="nowrap">${clock(highlight.start)}–${clock(highlight.end)}<br /><span class="muted">${escapeHtml(length)}s</span></td>
@@ -911,11 +949,7 @@ function renderHighlightRow(highlight) {
         <div class="muted">${escapeHtml(highlight.rationale)}</div>
       </td>
       <td class="nowrap">
-        ${
-          highlight.job_id
-            ? `<button type="button" class="link clip-open-job" data-job-id="${escapeHtml(highlight.job_id)}">open clip</button><br />${formatBadge(highlight.format_compliance)}`
-            : `<span class="badge unknown">not cut</span>`
-        }
+        ${cuts.length ? cuts.map(renderCutEntry).join("") : `<span class="badge unknown">not cut</span>`}
       </td>
       <td><button type="button" class="clip-preview-btn" data-start="${escapeHtml(highlight.start)}" data-end="${escapeHtml(highlight.end)}">Preview</button></td>
     </tr>
@@ -936,6 +970,14 @@ function renderSourceDetail(data, status) {
     .map(
       (profile) =>
         `<option value="${escapeHtml(profile)}" ${profile === data.default_profile ? "selected" : ""}>${escapeHtml(profile)}</option>`
+    )
+    .join("");
+  const captionStyles = data.caption_styles || [];
+  const chosenStyle = captionStyles.includes(captionChoice.style) ? captionChoice.style : data.default_caption_style;
+  const captionStyleOptions = captionStyles
+    .map(
+      (style) =>
+        `<option value="${escapeHtml(style)}" ${style === chosenStyle ? "selected" : ""}>${escapeHtml(style)}</option>`
     )
     .join("");
 
@@ -991,23 +1033,62 @@ function renderSourceDetail(data, status) {
       </table>
       <div class="actions">
         <select id="clip-profile" title="Format check to run on each clip">${profileOptions}</select>
+        <label class="inline-check">
+          <input type="checkbox" id="clip-captions" ${captionChoice.on && captionStyles.length ? "checked" : ""} ${captionStyles.length ? "" : "disabled"} />
+          Captions
+        </label>
+        <select id="clip-caption-style" title="Caption look burned into each clip" disabled>${captionStyleOptions}</select>
         <button type="button" id="clip-cut-selected" disabled>Cut selected</button>
-        <button type="button" id="clip-cut-all" ${remaining ? "" : "disabled"}>Cut all not cut yet (${remaining})</button>
+        <button type="button" id="clip-cut-all" disabled>Cut all not cut yet</button>
       </div>
-      <p class="review-note">Cutting makes a 9:16 clip with the original audio and puts it under Staged Jobs. Nothing is published.</p>
+      <p class="review-note">Cutting makes a 9:16 clip with the original audio and puts it under Staged Jobs. Nothing is published. With Captions ticked, the transcript's words are burned in; a plain and a captioned cut of one highlight can both be staged.</p>
       ${statusHtml}
     </div>`
     }
   `;
-  wireSourceDetail(source.source_id);
+  wireSourceDetail(source.source_id, highlights);
 }
 
-function wireSourceDetail(sourceId) {
+function chosenCaptionStyle() {
+  const captionsBox = document.getElementById("clip-captions");
+  return captionsBox && captionsBox.checked ? document.getElementById("clip-caption-style").value : null;
+}
+
+function wireSourceDetail(sourceId, highlights) {
   const video = document.getElementById("clip-preview");
   if (!video) return;
   const cutSelectedBtn = document.getElementById("clip-cut-selected");
+  const cutAllBtn = document.getElementById("clip-cut-all");
+  const captionsBox = document.getElementById("clip-captions");
+  const captionStyleSelect = document.getElementById("clip-caption-style");
   const picks = [...detailEl.querySelectorAll(".clip-pick")];
   const pickedRanks = () => picks.filter((box) => box.checked).map((box) => Number(box.dataset.rank));
+  const highlightByRank = new Map(highlights.map((highlight) => [String(highlight.rank), highlight]));
+
+  // What's already cut depends on the look chosen, so the picks and the
+  // "cut all" count follow the Captions box and style.
+  const refreshCutControls = () => {
+    const style = chosenCaptionStyle();
+    captionStyleSelect.disabled = !captionsBox.checked;
+    for (const box of picks) {
+      const done = hasCutInStyle(highlightByRank.get(box.dataset.rank), style);
+      box.disabled = done;
+      if (done) box.checked = false;
+    }
+    const remaining = highlights.filter((highlight) => !hasCutInStyle(highlight, style)).length;
+    cutAllBtn.disabled = remaining === 0;
+    cutAllBtn.textContent = `Cut all not cut yet${style ? ` with ${style}` : ""} (${remaining})`;
+    cutSelectedBtn.disabled = pickedRanks().length === 0;
+  };
+  captionsBox.addEventListener("change", () => {
+    captionChoice = { ...captionChoice, on: captionsBox.checked };
+    refreshCutControls();
+  });
+  captionStyleSelect.addEventListener("change", () => {
+    captionChoice = { ...captionChoice, style: captionStyleSelect.value };
+    refreshCutControls();
+  });
+  refreshCutControls();
 
   // Stop at the end of the highlight being previewed, so a preview shows
   // exactly what the cut would contain.
@@ -1037,13 +1118,20 @@ function wireSourceDetail(sourceId) {
     });
   }
   cutSelectedBtn.addEventListener("click", () => cutHighlights(sourceId, pickedRanks()));
-  document.getElementById("clip-cut-all").addEventListener("click", () => cutHighlights(sourceId, null));
+  cutAllBtn.addEventListener("click", () => cutHighlights(sourceId, null));
 }
 
 async function cutHighlights(sourceId, indices) {
   const args = { source_id: sourceId, profile: document.getElementById("clip-profile").value };
   if (indices) args.indices = indices;
-  for (const control of detailEl.querySelectorAll("#clip-cut-selected, #clip-cut-all, .clip-pick")) {
+  const captionStyle = chosenCaptionStyle();
+  if (captionStyle) {
+    args.captions = true;
+    args.caption_style = captionStyle;
+  }
+  for (const control of detailEl.querySelectorAll(
+    "#clip-cut-selected, #clip-cut-all, .clip-pick, #clip-captions, #clip-caption-style"
+  )) {
     control.disabled = true;
   }
   const statusEl = document.getElementById("clip-status");
@@ -1056,7 +1144,7 @@ async function cutHighlights(sourceId, indices) {
     const failed = result.staged.filter((clip) => clip.format_compliance?.passed !== true).length;
     status = {
       text:
-        `Cut ${result.staged.length} clip(s) — they're under Staged Jobs. Nothing is published.` +
+        `Cut ${result.staged.length} clip(s)${captionStyle ? ` with ${captionStyle} captions` : ""} — they're under Staged Jobs. Nothing is published.` +
         (failed ? ` ${failed} did not pass the ${result.profile} format check.` : ""),
       error: failed > 0,
     };

@@ -76,6 +76,7 @@ def test_recorded_highlights_are_listed_in_order_and_need_cutting(project):
         "rationale": "Stands alone.",
         "job_id": None,
         "format_compliance": None,
+        "cuts": [],
     }
     assert source["clips_cut"] == 0
     assert source["next"] == "cut"

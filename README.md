@@ -149,6 +149,8 @@ compared side by side. To compare without cutting,
 `.venv/bin/python -m pipeline.clip.captions preview <source_id> <rank>`
 draws every look over a real frame of that highlight and saves the stills
 as `work/clip-<source_id>/caption-preview-<rank>-<style>.png`.
+In the dashboard's Clip mode tab, the Captions box and style picker next
+to Cut do the same; every cut of a highlight is listed with its look.
 
 Clip mode accepts any video, so the allowlist isn't a gate here. Instead
 every source records where it came from and a `rights_basis`: `allowlist`

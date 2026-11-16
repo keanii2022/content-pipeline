@@ -15,7 +15,7 @@ from typing import Any
 
 from pipeline.clip import intake as intake_stage
 from pipeline.clip import transcribe as transcribe_stage
-from pipeline.clip.cut import staged_clips
+from pipeline.clip.cut import _caption_style_of, staged_clips
 from pipeline.clip.highlights import HighlightsError, load_highlights
 from pipeline.clip.intake import IntakeError, load_source, provenance
 from pipeline.clip.transcribe import TranscribeError, load_transcript
@@ -64,6 +64,7 @@ def describe_source(source_id: str) -> dict[str, Any]:
         "highlights_recorded": False,
         "highlights": [],
         "clips_cut": 0,
+        "cuts_staged": 0,
         "other_staged_clips": len(clips),
         "next": NEXT_TRANSCRIBE,
     }
@@ -82,15 +83,26 @@ def describe_source(source_id: str) -> dict[str, Any]:
     if not (work_dir / "highlights.json").is_file():
         return description
     _, record = load_highlights(source_id)
-    staged_by_span = {_span(manifest["highlight"]): (job_id, manifest) for job_id, manifest in clips}
+    cuts_by_span: dict[tuple[Any, Any], list[dict[str, Any]]] = {}
+    for job_id, manifest in clips:
+        cuts_by_span.setdefault(_span(manifest["highlight"]), []).append(
+            {
+                "job_id": job_id,
+                "captions": _caption_style_of(manifest),
+                "format_compliance": manifest.get("format_compliance"),
+            }
+        )
     highlights = []
     for highlight in sorted(record["highlights"], key=lambda item: item["rank"]):
-        job_id, manifest = staged_by_span.get(_span(highlight), (None, {}))
+        # Plain cut first, so job_id/format_compliance keep meaning the plain clip when there is one.
+        cuts = sorted(cuts_by_span.get(_span(highlight), []), key=lambda cut: cut["captions"] is not None)
+        first = cuts[0] if cuts else {"job_id": None, "format_compliance": None}
         highlights.append(
             {
                 **{field: highlight[field] for field in _HIGHLIGHT_FIELDS},
-                "job_id": job_id,
-                "format_compliance": manifest.get("format_compliance"),
+                "job_id": first["job_id"],
+                "format_compliance": first["format_compliance"],
+                "cuts": cuts,
             }
         )
     current_spans = {_span(highlight) for highlight in highlights}
@@ -99,6 +111,7 @@ def describe_source(source_id: str) -> dict[str, Any]:
         highlights_recorded=True,
         highlights=highlights,
         clips_cut=clips_cut,
+        cuts_staged=sum(len(highlight["cuts"]) for highlight in highlights),
         # Staged from this source, but from picks that have since been replaced.
         other_staged_clips=sum(
             1 for _, manifest in clips if _span(manifest["highlight"]) not in current_spans
