@@ -20,6 +20,10 @@ const tabRunsEl = document.getElementById("tab-runs");
 const tabControlEl = document.getElementById("tab-control");
 const tabClipEl = document.getElementById("tab-clip");
 const clipListEl = document.getElementById("clip-list");
+const showRejectedToggleEl = document.getElementById("show-rejected-toggle");
+const showRejectedEl = document.getElementById("show-rejected");
+const showRejectedLabelEl = document.getElementById("show-rejected-label");
+const SHOW_REJECTED_KEY = "content-pipeline-show-rejected";
 
 let jobs = [];
 let activeJobId = null;
@@ -33,6 +37,7 @@ let currentJob = loadCurrentJob(); // { creator_id, batch_id, candidate_index, j
 let clipSources = [];
 let activeSourceId = null;
 let previewEnd = null; // where the highlight being previewed stops, in seconds
+let showRejected = loadShowRejected();
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
@@ -69,16 +74,55 @@ async function loadJobs() {
   renderJobList();
 }
 
+function isRejected(manifest) {
+  return manifest.review?.reviewed === true && manifest.review.approved === false;
+}
+
+// Rejecting only hides a job: its files and manifest stay in staged/, and
+// Approve on its detail page brings it back.
+function loadShowRejected() {
+  try {
+    return localStorage.getItem(SHOW_REJECTED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveShowRejected(value) {
+  try {
+    localStorage.setItem(SHOW_REJECTED_KEY, String(value));
+  } catch {
+    // Private windows can block storage; the toggle still works for this visit.
+  }
+}
+
+function renderShowRejectedToggle(rejectedCount) {
+  showRejectedToggleEl.hidden = activeTab !== "jobs" || rejectedCount === 0;
+  showRejectedEl.checked = showRejected;
+  showRejectedLabelEl.textContent = `Show rejected (${rejectedCount})`;
+}
+
+function addEmptyListItem(text) {
+  const li = document.createElement("li");
+  li.textContent = text;
+  li.style.cursor = "default";
+  jobListEl.appendChild(li);
+}
+
 function renderJobList() {
   jobListEl.innerHTML = "";
+  const rejectedCount = jobs.filter(isRejected).length;
+  renderShowRejectedToggle(rejectedCount);
   if (jobs.length === 0) {
-    const li = document.createElement("li");
-    li.textContent = "No staged jobs found.";
-    li.style.cursor = "default";
-    jobListEl.appendChild(li);
+    addEmptyListItem("No staged jobs found.");
     return;
   }
-  for (const manifest of jobs) {
+  const visibleJobs = showRejected ? jobs : jobs.filter((manifest) => !isRejected(manifest));
+  if (visibleJobs.length === 0) {
+    addEmptyListItem("Every staged job is rejected.");
+    return;
+  }
+  for (const manifest of visibleJobs) {
     const li = document.createElement("li");
     li.className = manifest.job_id === activeJobId ? "active" : "";
     li.innerHTML = `
@@ -105,6 +149,7 @@ function switchTab(tab) {
   tabControlEl.classList.toggle("active", tab === "control");
   tabClipEl.classList.toggle("active", tab === "clip");
   jobListEl.hidden = tab !== "jobs";
+  renderShowRejectedToggle(jobs.filter(isRejected).length);
   runListEl.hidden = tab !== "runs";
   controlListEl.hidden = tab !== "control";
   clipListEl.hidden = tab !== "clip";
@@ -279,7 +324,10 @@ function renderFormatCompliance(manifest) {
 function renderReviewNote(manifest) {
   const review = manifest.review;
   if (!review?.reviewed) return "";
-  return `<p class="review-note">Marked ${review.approved ? "approved" : "rejected"} at ${escapeHtml(review.reviewed_at)}</p>`;
+  const hiddenNote = !review.approved && !showRejected
+    ? " — hidden from the list. Approve brings it back."
+    : "";
+  return `<p class="review-note">Marked ${review.approved ? "approved" : "rejected"} at ${escapeHtml(review.reviewed_at)}${hiddenNote}</p>`;
 }
 
 // This mirrors pipeline.publish.youtube._check_eligibility so the form
@@ -1161,6 +1209,11 @@ tabJobsEl.addEventListener("click", () => switchTab("jobs"));
 tabRunsEl.addEventListener("click", () => switchTab("runs"));
 tabControlEl.addEventListener("click", () => switchTab("control"));
 tabClipEl.addEventListener("click", () => switchTab("clip"));
+showRejectedEl.addEventListener("change", () => {
+  showRejected = showRejectedEl.checked;
+  saveShowRejected(showRejected);
+  renderJobList();
+});
 
 loadJobs().catch((err) => {
   detailEl.innerHTML = `<p class="empty">Failed to load jobs: ${escapeHtml(err.message)}</p>`;

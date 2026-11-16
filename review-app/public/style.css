@@ -428,6 +428,25 @@ button.link {
   max-height: 340px;
 }
 
+.list-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.list-toggle[hidden] {
+  display: none;
+}
+
+.list-toggle input {
+  width: auto;
+  margin: 0;
+}
+
 .ack {
   display: flex;
   align-items: flex-start;
