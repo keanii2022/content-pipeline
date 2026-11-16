@@ -14,12 +14,10 @@ import pytest
 from PIL import Image
 
 from pipeline.clip import captions, cut
+from pipeline.clip.caption_styles import DEFAULT_STYLE, get_style
 from pipeline.clip.captions import (
     BLANK_PNG,
-    CAPTION_HEIGHT,
-    CAPTION_STYLE,
     LINGER_SECONDS,
-    MAX_WORDS_PER_LINE,
     TIMING_FILE,
     caption_lines,
     render_captions,
@@ -36,6 +34,8 @@ from test_clip_cut import (  # noqa: F401
     tools,
 )
 from test_clip_publish import OWN, fake_youtube  # noqa: F401
+
+DEFAULT = get_style(DEFAULT_STYLE)
 
 
 def transcript_of(*words):
@@ -89,7 +89,7 @@ def test_words_are_shifted_to_clip_time_and_grouped_in_threes():
         ["w6"],
     ]
     assert lines[0]["start"] == 0.0
-    assert all(len(line["words"]) <= MAX_WORDS_PER_LINE for line in lines)
+    assert all(len(line["words"]) <= DEFAULT.max_words_per_line for line in lines)
 
 
 def test_a_word_is_lit_until_the_next_word_and_a_line_clears_after_its_last():
@@ -206,7 +206,7 @@ def test_one_png_per_lit_word_plus_a_blank_all_the_same_size(tmp_path):
     assert (timing.parent / BLANK_PNG) in pngs
     for png in pngs:
         with Image.open(png) as image:
-            assert image.size == (1080, CAPTION_HEIGHT)
+            assert image.size == (1080, DEFAULT.strip_height)
             assert image.mode == "RGBA"
 
 
@@ -235,8 +235,8 @@ def test_the_lit_word_is_yellow_and_the_rest_white(tmp_path):
             return {pixel[:3] for pixel in pixels if pixel[3] == 255}
 
     first = colors("line001-word1.png")
-    assert captions.LIT_COLOR[:3] in first
-    assert captions.TEXT_COLOR[:3] in first
+    assert DEFAULT.lit_text_color[:3] in first
+    assert DEFAULT.text_color[:3] in first
     with Image.open(tmp_path / BLANK_PNG) as blank:
         assert blank.getextrema()[3] == (0, 0)
 
@@ -300,7 +300,7 @@ def test_a_captioned_cut_overlays_the_caption_timeline(project, tools, monkeypat
     assert cmd[cmd.index("-i") + 2:cmd.index("-i") + 6] == ["-f", "concat", "-safe", "0"]
     graph = cmd[cmd.index("-filter_complex") + 1]
     assert graph.startswith("[0:V:0]scale=1080:1920:force_original_aspect_ratio=decrease,")
-    assert f"overlay=0:{captions.CAPTION_TOP}:eof_action=pass[v]" in graph
+    assert f"overlay=0:{DEFAULT.strip_top}:eof_action=pass[v]" in graph
     assert cmd[cmd.index("-map") + 1] == "[v]"
     assert "0:a:0" in cmd
     assert "-vf" not in cmd
@@ -316,7 +316,7 @@ def test_a_captioned_manifest_says_so_and_keeps_provenance_unchanged(project):
     manifest = project.manifest(job_id)
     assert manifest["source"] == UNVERIFIED
     # The project's transcript has back-to-back 2 s words: 15 words, 3 per line.
-    assert manifest["captions"] == {"style": CAPTION_STYLE, "lines": 5}
+    assert manifest["captions"] == {"style": DEFAULT_STYLE, "lines": 5}
 
 
 def test_a_plain_manifest_has_no_captions_key(project):
@@ -417,7 +417,7 @@ def test_a_failed_captioned_cut_leaves_nothing_behind(project, tools):
 def test_cut_command_passes_captions(project, monkeypatch, capsys):
     calls = []
 
-    def fake_cut(source_id, only, profile, *, captions=False):
+    def fake_cut(source_id, only, profile, *, captions=False, caption_style=DEFAULT_STYLE):
         calls.append(captions)
         return {"source_id": source_id, "profile": profile, "rights_basis": "own", "staged": [], "already_cut": []}
 
@@ -445,7 +445,7 @@ def test_a_captioned_clip_publishes_under_the_same_rules(dirs, tools, fake_youtu
 
     upload_video(job_id, title="A title I typed", acknowledge_unverified_rights=True)
     assert len(fake_youtube.uploads) == 1
-    assert project.manifest(job_id)["captions"]["style"] == CAPTION_STYLE
+    assert project.manifest(job_id)["captions"]["style"] == DEFAULT_STYLE
 
 
 def test_a_captioned_clip_with_tampered_provenance_is_still_refused(dirs, tools, fake_youtube):

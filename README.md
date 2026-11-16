@@ -139,6 +139,17 @@ A captioned and a plain cut of the same highlight can sit side by side in
 the finished list, and a captioned clip publishes under exactly the same
 rules as a plain one.
 
+There are three caption looks, listed in `pipeline/clip/caption_styles.py`:
+`bold-white-yellow-word` (the default above), `bold-white-purple-box` (the
+spoken word sits on a purple box) and `clean-sentence-cyan-word` (smaller
+sentence-case text, up to four words, spoken word in cyan). Pick one with
+`cut <source_id> --captions --caption-style <name>`; the manifest records
+which. Each look of a highlight counts as its own cut, so they can be
+compared side by side. To compare without cutting,
+`.venv/bin/python -m pipeline.clip.captions preview <source_id> <rank>`
+draws every look over a real frame of that highlight and saves the stills
+as `work/clip-<source_id>/caption-preview-<rank>-<style>.png`.
+
 Clip mode accepts any video, so the allowlist isn't a gate here. Instead
 every source records where it came from and a `rights_basis`: `allowlist`
 (the channel is on the allowlist), `own` (my footage), or `unverified`

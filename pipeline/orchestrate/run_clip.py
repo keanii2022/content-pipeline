@@ -31,6 +31,8 @@ from pipeline.clip.cut import (
     OUTPUT_FILE,
     CutError,
     _highlight_numbers,
+    add_caption_arguments,
+    caption_style_from,
     cut_highlights,
 )
 from pipeline.clip.highlights import (
@@ -177,7 +179,14 @@ def _cmd_record_highlights(args: argparse.Namespace) -> None:
 
 
 def _cmd_cut(args: argparse.Namespace) -> None:
-    result = cut_highlights(args.source_id, args.only, args.profile, captions=args.captions)
+    caption_style = caption_style_from(args.cut_parser, args)
+    result = cut_highlights(
+        args.source_id,
+        args.only,
+        args.profile,
+        captions=args.captions,
+        caption_style=caption_style,
+    )
     print(
         f"Cut {len(result['staged'])} clip(s) from source '{result['source_id']}' "
         f"(rights_basis: {result['rights_basis']}):"
@@ -299,12 +308,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="cut just these highlight numbers (default: all not yet cut)",
     )
     p_cut.add_argument("--profile", default=DEFAULT_PROFILE, choices=sorted(PROFILES))
-    p_cut.add_argument(
-        "--captions",
-        action="store_true",
-        help="burn in word-by-word captions from the transcript (default: off)",
-    )
-    p_cut.set_defaults(func=_cmd_cut)
+    add_caption_arguments(p_cut)
+    p_cut.set_defaults(func=_cmd_cut, cut_parser=p_cut)
 
     p_status = subparsers.add_parser("status", help="Show how far a source has got and what's next.")
     p_status.add_argument("source_id")
