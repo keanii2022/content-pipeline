@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Any, Optional, Sequence
 
 from pipeline.assemble.assemble import _OUTPUT_HEIGHT, _OUTPUT_WIDTH
+from pipeline.clip import captions as captions_module
+from pipeline.clip.captions import CaptionError
 from pipeline.clip.highlights import HighlightsError, load_highlights
 from pipeline.clip.intake import (
     RIGHTS_ALLOWLIST,
@@ -33,6 +35,7 @@ from pipeline.clip.intake import (
     load_source,
     provenance,
 )
+from pipeline.clip.transcribe import TranscribeError, load_transcript
 from pipeline.format import validate as format_validate
 from pipeline.format.profiles import PROFILES
 from pipeline.permissions.validate import LedgerError, is_permitted
@@ -136,16 +139,31 @@ def staged_clips(source_id: str) -> list[tuple[str, dict[str, Any]]]:
     return found
 
 
-def _already_cut(source_id: str) -> dict[tuple[Any, Any], str]:
-    """Map (start, end) -> job_id for every clip already staged from this source."""
+def _cut_key(start: Any, end: Any, captioned: bool) -> tuple[Any, Any, bool]:
+    # A captioned and a plain cut of the same highlight are different clips,
+    # so trying captions never requires removing the plain one.
+    return (start, end, captioned)
+
+
+def _already_cut(source_id: str) -> dict[tuple[Any, Any, bool], str]:
+    """Map (start, end, captioned) -> job_id for every clip already staged from this source."""
     return {
-        (manifest["highlight"].get("start"), manifest["highlight"].get("end")): job_id
+        _cut_key(
+            manifest["highlight"].get("start"),
+            manifest["highlight"].get("end"),
+            "captions" in manifest,
+        ): job_id
         for job_id, manifest in staged_clips(source_id)
     }
 
 
 def _run_ffmpeg(
-    source_path: Path, start: float, length: float, output_path: Path, ffmpeg_path: str
+    source_path: Path,
+    start: float,
+    length: float,
+    output_path: Path,
+    ffmpeg_path: str,
+    captions_file: Optional[Path] = None,
 ) -> None:
     scale_pad = (
         f"scale={_OUTPUT_WIDTH}:{_OUTPUT_HEIGHT}:force_original_aspect_ratio=decrease,"
@@ -161,11 +179,31 @@ def _run_ffmpeg(
         "-ss", f"{start:.3f}",
         "-t", f"{length:.3f}",
         "-i", str(source_path),
-        # V, not v: skips cover art, which would make a still-image "clip".
-        "-map", "0:V:0",
-        "-map", "0:a:0",
-        "-map_chapters", "-1",
-        "-vf", scale_pad,
+    ]
+    if captions_file is None:
+        cmd += [
+            # V, not v: skips cover art, which would make a still-image "clip".
+            "-map", "0:V:0",
+            "-map", "0:a:0",
+            "-map_chapters", "-1",
+            "-vf", scale_pad,
+        ]
+    else:
+        # -ss/-t above apply to the source only; the caption timeline
+        # already starts at 0 = clip start.
+        cmd += [
+            "-f", "concat",
+            "-safe", "0",
+            "-i", str(captions_file),
+            "-filter_complex",
+            f"[0:V:0]{scale_pad}[base];"
+            "[1:v]format=rgba,fps=30[captions];"
+            f"[base][captions]overlay=0:{captions_module.CAPTION_TOP}:eof_action=pass[v]",
+            "-map", "[v]",
+            "-map", "0:a:0",
+            "-map_chapters", "-1",
+        ]
+    cmd += [
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
@@ -191,6 +229,7 @@ def _stage_clip(
     highlight: dict[str, Any],
     work_dir: Path,
     ffmpeg_path: str,
+    lines: Optional[list[dict[str, Any]]] = None,
 ) -> str:
     """Cut one highlight and move it into staged/ as a finished job.
 
@@ -206,14 +245,24 @@ def _stage_clip(
 
     build_dir = work_dir / f"cut-{job_id}.partial"
     build_dir.mkdir()
+    length = round(highlight["end"] - highlight["start"], 3)
+    captions_dir = build_dir / "captions"
     try:
+        captions_file = None
+        if lines is not None:
+            try:
+                captions_file = captions_module.render_captions(lines, captions_dir, length)
+            except (CaptionError, OSError) as exc:
+                raise CutError(f"could not draw the captions: {exc}") from exc
         _run_ffmpeg(
             source_path,
             highlight["start"],
-            round(highlight["end"] - highlight["start"], 3),
+            length,
             build_dir / OUTPUT_FILE,
             ffmpeg_path,
+            captions_file,
         )
+        shutil.rmtree(captions_dir, ignore_errors=True)
         manifest = {
             "job_id": job_id,
             "mode": MODE,
@@ -222,6 +271,11 @@ def _stage_clip(
             "source": source,
             "highlight": {field: highlight[field] for field in _STAGED_HIGHLIGHT_FIELDS},
             "audio": "source",
+            **(
+                {"captions": {"style": captions_module.CAPTION_STYLE, "lines": len(lines)}}
+                if lines is not None
+                else {}
+            ),
             "assembled_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
         (build_dir / "manifest.json").write_text(
@@ -244,12 +298,18 @@ def cut_highlights(
     *,
     ffmpeg_path: str = "ffmpeg",
     ffprobe_path: str = "ffprobe",
+    captions: bool = False,
 ) -> dict[str, Any]:
     """Cut a source's highlights into staged clips and format-check each.
 
     `indices` are highlight numbers (their rank in highlights.json, from
     1). With none given, every highlight not already cut is cut; naming
-    one that is already staged is refused rather than cut twice.
+    one that is already staged is refused rather than cut twice. "Already
+    cut" is per highlight and caption setting.
+
+    With `captions`, word-by-word captions from the source's transcript
+    are burned in. No transcript, or no words in a highlight, is refused
+    rather than cut without captions.
 
     Returns {"source_id", "profile", "rights_basis", "staged": [...],
     "already_cut": [...]}. Raises CutError before cutting anything if the
@@ -271,12 +331,33 @@ def cut_highlights(
         )
     _check_permission_still_holds(source)
 
+    if captions is not True and captions is not False:
+        raise CutError("captions must be True or False")
+    if captions:
+        try:
+            captions_module.require_pillow()
+        except CaptionError as exc:
+            raise CutError(str(exc)) from exc
+        try:
+            _, transcript = load_transcript(source_id)
+        except TranscribeError as exc:
+            raise CutError(f"captions need the transcript: {exc}") from exc
+        if transcript.get("source") != source:
+            raise CutError(
+                "transcript.json records different provenance than the source's "
+                "own metadata — transcribe it again"
+            )
+
     selected = _select(record["highlights"], indices)
     existing = _already_cut(source_id)
+
+    def key(highlight: dict[str, Any]) -> tuple[Any, Any, bool]:
+        return _cut_key(highlight["start"], highlight["end"], captions)
+
     already_cut = [
-        {"rank": highlight["rank"], "job_id": existing[(highlight["start"], highlight["end"])]}
+        {"rank": highlight["rank"], "job_id": existing[key(highlight)]}
         for highlight in selected
-        if (highlight["start"], highlight["end"]) in existing
+        if key(highlight) in existing
     ]
     if already_cut and indices is not None:
         listed = ", ".join(f"#{item['rank']} (staged/{item['job_id']})" for item in already_cut)
@@ -285,6 +366,18 @@ def cut_highlights(
     to_cut = [highlight for highlight in selected if highlight["rank"] not in done_ranks]
     if not to_cut:
         raise CutError(f"every highlight of '{source_id}' is already cut and staged")
+
+    lines_by_rank: dict[int, Optional[list[dict[str, Any]]]] = {}
+    for highlight in to_cut:
+        lines_by_rank[highlight["rank"]] = None
+        if captions:
+            lines = captions_module.caption_lines(transcript, highlight["start"], highlight["end"])
+            if not lines:
+                raise CutError(
+                    f"highlight #{highlight['rank']} has no transcribed words to caption "
+                    f"between {highlight['start']:g}s and {highlight['end']:g}s"
+                )
+            lines_by_rank[highlight["rank"]] = lines
 
     staged: list[dict[str, Any]] = []
 
@@ -295,7 +388,15 @@ def cut_highlights(
 
     for highlight in to_cut:
         try:
-            job_id = _stage_clip(source_id, source_path, source, highlight, work_dir, ffmpeg_path)
+            job_id = _stage_clip(
+                source_id,
+                source_path,
+                source,
+                highlight,
+                work_dir,
+                ffmpeg_path,
+                lines_by_rank[highlight["rank"]],
+            )
         except CutError as exc:
             raise CutError(f"highlight #{highlight['rank']}: {exc}{staged_so_far()}") from exc
         try:
@@ -350,10 +451,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="cut just these highlight numbers (default: all not yet cut)",
     )
     parser.add_argument("--profile", default=DEFAULT_PROFILE, choices=sorted(PROFILES))
+    parser.add_argument(
+        "--captions",
+        action="store_true",
+        help="burn in word-by-word captions from the transcript (default: off)",
+    )
     args = parser.parse_args(argv)
 
     try:
-        result = cut_highlights(args.source_id, args.only, args.profile)
+        result = cut_highlights(args.source_id, args.only, args.profile, captions=args.captions)
     except CutError as exc:
         print(f"cut failed: {exc}", file=sys.stderr)
         return 1

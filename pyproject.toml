@@ -22,6 +22,11 @@ youtube = [
 clip = [
     "faster-whisper>=1.0",
 ]
+# Only needed for `cut --captions` (pipeline.clip.captions), which draws
+# each caption as a PNG. `pip install -e ".[captions]"`
+captions = [
+    "Pillow>=10.0",
+]
 # `pip install -e .[test]` — runs offline; the suite mocks every network call.
 test = [
     "pytest>=8",
@@ -33,6 +38,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["pipeline*"]
+
+[tool.setuptools.package-data]
+"pipeline.clip" = ["fonts/*.ttf", "fonts/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

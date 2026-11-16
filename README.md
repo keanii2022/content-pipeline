@@ -128,6 +128,17 @@ runs locally with Whisper: `.venv/bin/pip install -e ".[clip]"`.
 .venv/bin/python -m pipeline.orchestrate.run_clip status <source_id>           # where a source stands and what's next
 ```
 
+Captions are off unless I ask for them. `cut <source_id> --captions`
+burns in word-by-word captions from the transcript: bold white text with
+a dark outline, the word being spoken in yellow, in the lower third. It
+needs Pillow (`.venv/bin/pip install -e ".[captions]"`) and uses the
+bundled Montserrat font (SIL Open Font License, in `pipeline/clip/fonts/`).
+My ffmpeg build has no subtitle or text filters, so each caption is drawn
+as a transparent PNG and layered on with `overlay`, which any ffmpeg has.
+A captioned and a plain cut of the same highlight can sit side by side in
+the finished list, and a captioned clip publishes under exactly the same
+rules as a plain one.
+
 Clip mode accepts any video, so the allowlist isn't a gate here. Instead
 every source records where it came from and a `rights_basis`: `allowlist`
 (the channel is on the allowlist), `own` (my footage), or `unverified`
